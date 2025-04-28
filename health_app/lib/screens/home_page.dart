@@ -3,11 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'dart:convert';
-import 'user_profile_page.dart';
-import 'change_pass_page.dart';
-import 'welcom_page.dart';
 import 'chatbot_page.dart';
 import 'notification_page.dart';
+import '../widgets/custom_drawer.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -164,20 +162,13 @@ class HomePageState extends State<HomePage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.blue[800],
         elevation: 0,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: Icon(
+            icon: const Icon(
               Icons.menu,
-              color: Colors.grey,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withAlpha(127),
-                  offset: Offset(1, 1),
-                  blurRadius: 3,
-                ),
-              ],
+              color: Colors.white,
             ),
             onPressed: () {
               Scaffold.of(context).openDrawer();
@@ -191,147 +182,26 @@ class HomePageState extends State<HomePage> {
               children: [
                 Text(
                   fullName,
-                  style: TextStyle(
-                    color: Colors.grey,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 16,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withAlpha(65),
-                        offset: Offset(1, 1),
-                        blurRadius: 3,
-                      ),
-                    ],
                   ),
                 ),
-                SizedBox(width: 10),
-                CircleAvatar(
+                const SizedBox(width: 10),
+                const CircleAvatar(
                   radius: 18,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person,
-                      color: const Color.fromARGB(255, 67, 149, 243)),
+                  child: Icon(
+                    Icons.person,
+                    color: Color(0xFF1976D2),
+                  ),
                 ),
               ],
             ),
           ),
         ],
       ),
-      drawer: Drawer(
-        child: Column(
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue[800],
-                image: DecorationImage(
-                  image: AssetImage('lib/assets/images/v870-tang-36.jpg'),
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.blueGrey.withAlpha(127),
-                    BlendMode.darken,
-                  ),
-                ),
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.white,
-                      child:
-                          Icon(Icons.person, size: 50, color: Colors.blue[800]),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      fullName,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withAlpha(64),
-                            offset: Offset(1, 1),
-                            blurRadius: 3,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: Container(
-                color: Colors.white,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.person, color: Colors.blue[800]),
-                      title: Text(
-                        'Thông tin cá nhân',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => PersonalInfoScreen()),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.lock, color: Colors.blue[800]),
-                      title: Text(
-                        'Thay đổi mật khẩu',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => ChangePasswordScreen()),
-                        );
-                      },
-                    ),
-                    Divider(height: 1, color: Colors.grey[300]),
-                    ListTile(
-                      leading: Icon(Icons.logout, color: Colors.red),
-                      title: Text(
-                        'Đăng xuất',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.red,
-                        ),
-                      ),
-                      onTap: () async {
-                        SharedPreferences prefs =
-                            await SharedPreferences.getInstance();
-                        await prefs.clear();
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => WelcomeScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      drawer: CustomDrawer(fullName: fullName),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
