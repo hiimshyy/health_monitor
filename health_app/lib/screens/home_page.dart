@@ -20,6 +20,7 @@ class HomePageState extends State<HomePage> {
   String fullName = '';
   bool isConnected = false;
   late MqttServerClient client;
+  List<Map<String, dynamic>> _chatHistory = [];
 
   // Dữ liệu sức khỏe
   double temperature = 0.0;
@@ -152,6 +153,18 @@ class HomePageState extends State<HomePage> {
     }
   }
 
+  void _handleChatHistoryUpdated(List<Map<String, dynamic>> history) {
+    setState(() {
+      _chatHistory = history;
+    });
+  }
+
+  void _handleNewChat() {
+    setState(() {
+      // Clear current chat and start new one
+    });
+  }
+
   @override
   void dispose() {
     client.disconnect();
@@ -220,14 +233,15 @@ class HomePageState extends State<HomePage> {
             ),
           ),
           Scaffold(
-            extendBodyBehindAppBar: true,
+            extendBodyBehindAppBar: false,
             appBar: AppBar(
-              backgroundColor: Colors.blue[800],
+              backgroundColor: Colors.white,
               elevation: 0,
+              centerTitle: true,
               title: const Text(
                 'Chatbot',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Colors.black,
                   shadows: [
                     Shadow(
                       color: Colors.black26,
@@ -241,7 +255,7 @@ class HomePageState extends State<HomePage> {
                 builder: (context) => IconButton(
                   icon: const Icon(
                     Icons.history,
-                    color: Colors.white,
+                    color: Colors.black,
                   ),
                   onPressed: () {
                     Scaffold.of(context).openDrawer();
@@ -249,44 +263,41 @@ class HomePageState extends State<HomePage> {
                 ),
               ),
               actions: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                  child: Row(
-                    children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white,
-                        child: Icon(
-                          Icons.person,
-                          color: Color(0xFF1976D2),
-                        ),
-                      ),
-                    ],
+                IconButton(
+                  icon: const Icon(
+                    Icons.add,
+                    color: Colors.black,
                   ),
+                  onPressed: _handleNewChat,
                 ),
+                const SizedBox(width: 8),
               ],
             ),
-            drawer: ChatbotDrawer(fullName: fullName),
-            body: const ChatbotScreen(),
+            drawer: ChatbotDrawer(
+              fullName: fullName,
+              chatHistory: _chatHistory,
+              onChatSelected: (chat) {
+                // Handle chat selection
+                setState(() {
+                  // Update chat history if needed
+                });
+              },
+              onNewChat: _handleNewChat,
+            ),
+            body: ChatbotScreen(
+              onChatHistoryUpdated: _handleChatHistoryUpdated,
+            ),
           ),
           Scaffold(
             extendBodyBehindAppBar: false,
             appBar: AppBar(
-              backgroundColor: Colors.blue[800],
+              backgroundColor: Colors.white,
               elevation: 0,
+              centerTitle: true,
               title: const Text(
                 'Thông báo',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Colors.black,
                   shadows: [
                     Shadow(
                       color: Colors.black26,
@@ -297,7 +308,7 @@ class HomePageState extends State<HomePage> {
                 ),
               ),
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
                 onPressed: () {
                   setState(() {
                     _selectedIndex = 0;
@@ -398,6 +409,7 @@ class HomeScreen extends StatelessWidget {
                         fontStyle: FontStyle.italic,
                       ),
                     ),
+                    SizedBox(height: 5),
                     GridView.count(
                       crossAxisCount: 2,
                       shrinkWrap: true,
