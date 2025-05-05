@@ -48,7 +48,11 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
         weight.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Vui lòng nhập đầy đủ thông tin')),
+        const SnackBar(
+          content: Text('Vui lòng nhập đầy đủ thông tin'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } else {
       // Lưu thông tin cá nhân vào SharedPreferences
@@ -69,7 +73,7 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => HomePage()),
+        MaterialPageRoute(builder: (context) => const HomePage()),
       );
     }
   }
@@ -79,17 +83,12 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(
-          'Cấu hình thông tin',
+        title: const Text(
+          'Thiết lập thông tin',
           style: TextStyle(
-            color: Colors.white,
-            shadows: [
-              Shadow(
-                color: Colors.black.withAlpha(127),
-                offset: Offset(1, 1),
-                blurRadius: 3,
-              ),
-            ],
+            color: Colors.black,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
           ),
         ),
         backgroundColor: Colors.transparent,
@@ -97,256 +96,362 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
       ),
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              'lib/assets/images/welcome_bg.png',
-              fit: BoxFit.cover,
-            ),
-          ),
+          // Background color
           Positioned.fill(
             child: Container(
-              color: Colors.black.withAlpha(127),
+              color: Colors.white,
             ),
           ),
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(height: 50),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: _fullNameController,
-                          decoration: InputDecoration(
-                            labelText: 'Họ và tên',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            prefixIcon:
-                                Icon(Icons.person, color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(229),
+          // Content
+          Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0, vertical: 40.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const SizedBox(height: 80),
+                        Text(
+                          '*Vui lòng điền chính xác các thông tin!',
+                          style: TextStyle(
+                            color: Colors.blue[600],
+                            fontSize: 16,
                           ),
-                          style: TextStyle(color: Colors.black),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        flex: 1,
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedGender,
-                          decoration: InputDecoration(
-                            labelText: 'Giới tính',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                        const SizedBox(height: 20),
+                        // Form fields
+                        // Name and Gender
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 4,
+                              child: TextField(
+                                controller: _fullNameController,
+                                textCapitalization: TextCapitalization.words,
+                                keyboardType: TextInputType.text,
+                                textInputAction: TextInputAction.next,
+                                decoration: InputDecoration(
+                                  labelText: 'Họ và tên',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.person,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                style: const TextStyle(color: Colors.black87),
+                              ),
                             ),
-                            prefixIcon: Icon(Icons.wc, color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(229),
-                          ),
-                          items: _genders.map((String gender) {
-                            return DropdownMenuItem<String>(
-                              value: gender,
-                              child: Text(gender,
-                                  style: TextStyle(color: Colors.black)),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedGender = newValue;
-                            });
-                          },
-                          dropdownColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          value: _selectedDay,
-                          decoration: InputDecoration(
-                            labelText: 'Ngày',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                value: _selectedGender,
+                                decoration: InputDecoration(
+                                  labelText: 'Giới tính',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon:
+                                      Icon(Icons.wc, color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                items: _genders.map((String gender) {
+                                  return DropdownMenuItem<String>(
+                                    value: gender,
+                                    child: Text(gender,
+                                        style: const TextStyle(
+                                            color: Colors.black87)),
+                                  );
+                                }).toList(),
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    _selectedGender = newValue;
+                                  });
+                                },
+                                dropdownColor: Colors.white,
+                              ),
                             ),
-                            prefixIcon: Icon(Icons.calendar_today,
-                                color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(229),
-                          ),
-                          items: _days.map((int day) {
-                            return DropdownMenuItem<int>(
-                              value: day,
-                              child: Text(day.toString(),
-                                  style: TextStyle(color: Colors.black)),
-                            );
-                          }).toList(),
-                          onChanged: (int? newValue) {
-                            setState(() {
-                              _selectedDay = newValue;
-                            });
-                          },
-                          dropdownColor: Colors.white,
+                          ],
                         ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          value: _selectedMonth,
-                          decoration: InputDecoration(
-                            labelText: 'Tháng',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: DropdownButtonFormField<int>(
+                                value: _selectedDay,
+                                decoration: InputDecoration(
+                                  labelText: 'Ngày',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.calendar_today,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                items: _days.map((int day) {
+                                  return DropdownMenuItem<int>(
+                                    value: day,
+                                    child: Text(day.toString(),
+                                        style: const TextStyle(
+                                            color: Colors.black87)),
+                                  );
+                                }).toList(),
+                                onChanged: (int? newValue) {
+                                  setState(() {
+                                    _selectedDay = newValue;
+                                  });
+                                },
+                                dropdownColor: Colors.white,
+                              ),
                             ),
-                            prefixIcon: Icon(Icons.calendar_today,
-                                color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(229),
-                          ),
-                          items: _months.map((int month) {
-                            return DropdownMenuItem<int>(
-                              value: month,
-                              child: Text(month.toString(),
-                                  style: TextStyle(color: Colors.black)),
-                            );
-                          }).toList(),
-                          onChanged: (int? newValue) {
-                            setState(() {
-                              _selectedMonth = newValue;
-                            });
-                          },
-                          dropdownColor: Colors.white,
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          value: _selectedYear,
-                          decoration: InputDecoration(
-                            labelText: 'Năm',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 5,
+                              child: DropdownButtonFormField<int>(
+                                value: _selectedMonth,
+                                decoration: InputDecoration(
+                                  labelText: 'Tháng',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.calendar_today,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                items: _months.map((int month) {
+                                  return DropdownMenuItem<int>(
+                                    value: month,
+                                    child: Text(month.toString(),
+                                        style: const TextStyle(
+                                            color: Colors.black87)),
+                                  );
+                                }).toList(),
+                                onChanged: (int? newValue) {
+                                  setState(() {
+                                    _selectedMonth = newValue;
+                                  });
+                                },
+                                dropdownColor: Colors.white,
+                              ),
                             ),
-                            prefixIcon: Icon(Icons.calendar_today,
-                                color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(127),
-                          ),
-                          items: _years.map((int year) {
-                            return DropdownMenuItem<int>(
-                              value: year,
-                              child: Text(year.toString(),
-                                  style: TextStyle(color: Colors.black)),
-                            );
-                          }).toList(),
-                          onChanged: (int? newValue) {
-                            setState(() {
-                              _selectedYear = newValue;
-                            });
-                          },
-                          dropdownColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _heightController,
-                          decoration: InputDecoration(
-                            labelText: 'Chiều cao (cm)',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 6,
+                              child: DropdownButtonFormField<int>(
+                                value: _selectedYear,
+                                decoration: InputDecoration(
+                                  labelText: 'Năm',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.calendar_today,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                items: _years.map((int year) {
+                                  return DropdownMenuItem<int>(
+                                    value: year,
+                                    child: Text(year.toString(),
+                                        style: const TextStyle(
+                                            color: Colors.black87)),
+                                  );
+                                }).toList(),
+                                onChanged: (int? newValue) {
+                                  setState(() {
+                                    _selectedYear = newValue;
+                                  });
+                                },
+                                dropdownColor: Colors.white,
+                              ),
                             ),
-                            prefixIcon:
-                                Icon(Icons.height, color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(127),
-                          ),
-                          keyboardType: TextInputType.number,
-                          style: TextStyle(color: Colors.black),
+                          ],
                         ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _weightController,
-                          decoration: InputDecoration(
-                            labelText: 'Cân nặng (kg)',
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _heightController,
+                                keyboardType: TextInputType.number,
+                                textInputAction: TextInputAction.next,
+                                decoration: InputDecoration(
+                                  labelText: 'Chiều cao (cm)',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.height,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                style: const TextStyle(color: Colors.black87),
+                              ),
                             ),
-                            prefixIcon: Icon(Icons.fitness_center,
-                                color: Colors.blue[800]),
-                            filled: true,
-                            fillColor: Colors.white.withAlpha(127),
-                          ),
-                          keyboardType: TextInputType.number,
-                          style: TextStyle(color: Colors.black),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 30),
-                  ElevatedButton(
-                    onPressed: _saveProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[800],
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                      elevation: 5,
-                    ),
-                    child: Text(
-                      'LƯU',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 30),
-                  Text(
-                    'Hãy điền thông tin để chúng tôi hỗ trợ bạn tốt hơn!',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontStyle: FontStyle.italic,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withAlpha(127),
-                          offset: Offset(1, 1),
-                          blurRadius: 3,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _weightController,
+                                keyboardType: TextInputType.number,
+                                textInputAction: TextInputAction.done,
+                                decoration: InputDecoration(
+                                  labelText: 'Cân nặng (kg)',
+                                  labelStyle:
+                                      TextStyle(color: Colors.blue[900]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    borderSide:
+                                        BorderSide(color: Colors.blue[800]!),
+                                  ),
+                                  prefixIcon: Icon(Icons.monitor_weight,
+                                      color: Colors.blue[800]),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                style: const TextStyle(color: Colors.black87),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ],
+                ),
               ),
-            ),
+              // Submit button at bottom
+              Container(
+                padding: const EdgeInsets.all(20),
+                color: Colors.white,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _saveProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[800],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      elevation: 5,
+                    ),
+                    child: const Text(
+                      'Bắt đầu',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
