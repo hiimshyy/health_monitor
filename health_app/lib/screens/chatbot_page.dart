@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import '../widgets/chatbot_drawer.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 class ChatbotScreen extends StatefulWidget {
   final Function(List<Map<String, dynamic>>)? onChatHistoryUpdated;
@@ -21,6 +23,8 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   List<Map<String, dynamic>> _chatHistory = [];
   String _currentChatId = '';
   bool _isTyping = false;
+  String? _currentAttachmentPath;
+  String? _currentAttachmentType;
 
   @override
   void initState() {
@@ -56,42 +60,51 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  void _startNewChat() {
+  Future<void> _startNewChat() async {
+    final newChatId = DateTime.now().millisecondsSinceEpoch.toString();
+    final welcomeMessage =
+        'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?';
+
     setState(() {
-      _currentChatId = DateTime.now().millisecondsSinceEpoch.toString();
+      _currentChatId = newChatId;
       _messages.clear();
-      _messages.add(const ChatMessage(
-        text:
-            'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?',
+      _messages.add(ChatMessage(
+        text: welcomeMessage,
         isUser: false,
       ));
     });
-  }
 
-  void _loadChat(Map<String, dynamic> chat) {
-    setState(() {
-      _currentChatId =
-          chat['id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
-      _messages.clear();
-      final List<dynamic> messages = jsonDecode(chat['messages'] ?? '[]');
-      for (var msg in messages) {
-        _messages.add(ChatMessage(
-          text: msg['text'] ?? '',
-          isUser: msg['isUser'] ?? false,
-        ));
-      }
-    });
+    // Save new chat to history immediately
+    final chatData = {
+      'id': newChatId,
+      'title': 'Cuộc trò chuyện mới',
+      'lastMessage': welcomeMessage,
+      'time': DateTime.now().toString(),
+      'messages': jsonEncode([
+        {
+          'text': welcomeMessage,
+          'isUser': false,
+        }
+      ]),
+    };
+
+    _chatHistory.insert(0, chatData);
+    await _saveChatHistory();
   }
 
   Future<void> _handleSubmitted(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty && _currentAttachmentPath == null) return;
 
     _messageController.clear();
     setState(() {
       _messages.add(ChatMessage(
         text: text,
         isUser: true,
+        attachmentPath: _currentAttachmentPath,
+        attachmentType: _currentAttachmentType,
       ));
+      _currentAttachmentPath = null;
+      _currentAttachmentType = null;
       _isTyping = true;
     });
 
@@ -158,6 +171,35 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: source);
+      if (image != null) {
+        setState(() {
+          _currentAttachmentPath = image.path;
+          _currentAttachmentType = 'image';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      if (result != null) {
+        setState(() {
+          _currentAttachmentPath = result.files.single.path!;
+          _currentAttachmentType = 'file';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking file: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -197,26 +239,138 @@ class ChatbotScreenState extends State<ChatbotScreen> {
 
   Widget _buildTextComposer() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0),
+      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(
+          color: Colors.grey[300]!,
+          width: 1.0,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_currentAttachmentPath != null) _buildAttachmentPreview(),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.attach_file),
+                color: Colors.black,
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.insert_drive_file),
+                              title: const Text('Tập tin'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _pickFile();
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.camera_alt),
+                              title: const Text('Camera'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _pickImage(ImageSource.camera);
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.photo),
+                              title: const Text('Ảnh'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _pickImage(ImageSource.gallery);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: const InputDecoration(
+                    hintText: 'Hỏi bất cứ điều gì',
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8.0),
+                  ),
+                  onSubmitted: _handleSubmitted,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send),
+                color: Colors.black,
+                onPressed: () {
+                  if (_messageController.text.isNotEmpty ||
+                      _currentAttachmentPath != null) {
+                    _handleSubmitted(_messageController.text);
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreview() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         children: [
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: const InputDecoration(
-                hintText: 'Nhập tin nhắn...',
-                border: InputBorder.none,
+          if (_currentAttachmentType == 'image')
+            Container(
+              width: 60,
+              height: 60,
+              margin: const EdgeInsets.only(right: 8.0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.0),
+                image: DecorationImage(
+                  image: FileImage(File(_currentAttachmentPath!)),
+                  fit: BoxFit.cover,
+                ),
               ),
-              onSubmitted: _handleSubmitted,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              margin: const EdgeInsets.only(right: 8.0),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.insert_drive_file, size: 20),
+                  const SizedBox(width: 4),
+                  Text(
+                    _currentAttachmentPath!.split('/').last,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
             ),
-          ),
           IconButton(
-            icon: const Icon(Icons.send),
-            color: Colors.blue[800],
+            icon: const Icon(Icons.close, size: 20),
             onPressed: () {
-              if (_messageController.text.isNotEmpty) {
-                _handleSubmitted(_messageController.text);
-              }
+              setState(() {
+                _currentAttachmentPath = null;
+                _currentAttachmentType = null;
+              });
             },
           ),
         ],
@@ -233,14 +387,8 @@ class _TypingIndicator extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          Container(
-            margin: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
-              backgroundColor: Colors.blue[800],
-              child: const Icon(Icons.medical_services, color: Colors.white),
-            ),
-          ),
           Container(
             padding:
                 const EdgeInsets.symmetric(vertical: 10.0, horizontal: 16.0),
@@ -271,7 +419,7 @@ class _TypingIndicator extends StatelessWidget {
         child: CircularProgressIndicator(
           strokeWidth: 2,
           valueColor: AlwaysStoppedAnimation<Color>(
-            Colors.blue[800]!.withOpacity(0.5 + (index * 0.2)),
+            Colors.blue[800]!.withAlpha((128 + (index * 51)).toInt()),
           ),
         ),
       ),
@@ -282,11 +430,15 @@ class _TypingIndicator extends StatelessWidget {
 class ChatMessage extends StatelessWidget {
   final String text;
   final bool isUser;
+  final String? attachmentPath;
+  final String? attachmentType;
 
   const ChatMessage({
     super.key,
     required this.text,
     required this.isUser,
+    this.attachmentPath,
+    this.attachmentType,
   });
 
   @override
@@ -297,14 +449,6 @@ class ChatMessage extends StatelessWidget {
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          if (!isUser)
-            Container(
-              margin: const EdgeInsets.only(right: 16.0),
-              child: CircleAvatar(
-                backgroundColor: Colors.blue[800],
-                child: const Icon(Icons.medical_services, color: Colors.white),
-              ),
-            ),
           Container(
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.7,
@@ -312,26 +456,65 @@ class ChatMessage extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(vertical: 10.0, horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isUser ? Colors.blue[800] : Colors.grey[200],
+              color: isUser ? Colors.grey[200] : Colors.transparent,
               borderRadius: BorderRadius.circular(20.0),
             ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: isUser ? Colors.white : Colors.black,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (attachmentPath != null) _buildAttachment(),
+                if (text.isNotEmpty)
+                  Text(
+                    text,
+                    style: const TextStyle(
+                      color: Colors.black,
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (isUser)
-            Container(
-              margin: const EdgeInsets.only(left: 16.0),
-              child: CircleAvatar(
-                backgroundColor: Colors.grey[200],
-                child: const Icon(Icons.person, color: Colors.blue),
-              ),
-            ),
         ],
       ),
     );
+  }
+
+  Widget _buildAttachment() {
+    if (attachmentType == 'image') {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8.0),
+          child: Image.file(
+            File(attachmentPath!),
+            width: 200,
+            height: 200,
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8.0),
+        padding: const EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.insert_drive_file, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                attachmentPath!.split('/').last,
+                style: const TextStyle(fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }

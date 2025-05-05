@@ -8,6 +8,42 @@ import 'notification_page.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/chatbot_drawer.dart';
 
+class Profile {
+  final String id;
+  final String name;
+  final String? avatar;
+  final int age;
+  final String gender;
+  final String relationship;
+
+  Profile({
+    required this.id,
+    required this.name,
+    this.avatar,
+    required this.age,
+    required this.gender,
+    required this.relationship,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'avatar': avatar,
+        'age': age,
+        'gender': gender,
+        'relationship': relationship,
+      };
+
+  factory Profile.fromJson(Map<String, dynamic> json) => Profile(
+        id: json['id'],
+        name: json['name'],
+        avatar: json['avatar'],
+        age: json['age'],
+        gender: json['gender'],
+        relationship: json['relationship'],
+      );
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -21,6 +57,8 @@ class HomePageState extends State<HomePage> {
   bool isConnected = false;
   late MqttServerClient client;
   List<Map<String, dynamic>> _chatHistory = [];
+  List<Profile> _profiles = [];
+  Profile? _currentProfile;
 
   // Dữ liệu sức khỏe
   double temperature = 0.0;
@@ -37,6 +75,7 @@ class HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadProfiles();
     _loadMeasurementHistory();
     _connectToMqtt();
   }
@@ -47,6 +86,24 @@ class HomePageState extends State<HomePage> {
     setState(() {
       fullName = prefs.getString('fullName') ?? 'Người dùng';
     });
+  }
+
+  Future<void> _loadProfiles() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? profilesJson = prefs.getString('profiles');
+    if (profilesJson != null) {
+      List<dynamic> profilesList = jsonDecode(profilesJson);
+      setState(() {
+        _profiles = profilesList.map((p) => Profile.fromJson(p)).toList();
+      });
+      await _loadCurrentProfile();
+    }
+  }
+
+  Future<void> _saveProfiles() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'profiles', jsonEncode(_profiles.map((p) => p.toJson()).toList()));
   }
 
   Future<void> _loadMeasurementHistory() async {
@@ -165,6 +222,267 @@ class HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _saveCurrentProfile() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_currentProfile != null) {
+      await prefs.setString('currentProfileId', _currentProfile!.id);
+    }
+  }
+
+  Future<void> _loadCurrentProfile() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? currentProfileId = prefs.getString('currentProfileId');
+    if (currentProfileId != null && _profiles.isNotEmpty) {
+      setState(() {
+        _currentProfile = _profiles.firstWhere(
+          (p) => p.id == currentProfileId,
+          orElse: () => _profiles.first,
+        );
+      });
+    }
+  }
+
+  void _switchProfile(String profileId) async {
+    final newProfile = _profiles.firstWhere((p) => p.id == profileId);
+    if (_currentProfile?.id != newProfile.id) {
+      await _saveCurrentProfile(); // Lưu profile hiện tại
+      setState(() {
+        _currentProfile = newProfile;
+      });
+    }
+  }
+
+  void _showProfileDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Quản lý thành viên',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[900],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_profiles.isNotEmpty)
+                  ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _profiles.length,
+                    itemBuilder: (context, index) {
+                      final profile = _profiles[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.blue[100],
+                          child: Text(
+                            profile.name[0].toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        title: Text(profile.name),
+                        subtitle: Text(
+                            '${profile.age} tuổi - ${profile.relationship}'),
+                        trailing: _currentProfile?.id == profile.id
+                            ? Icon(Icons.check_circle, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _currentProfile = profile;
+                          });
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showAddProfileDialog();
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('Thêm thành viên'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[800],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddProfileDialog() {
+    final nameController = TextEditingController();
+    final ageController = TextEditingController();
+    String selectedGender = 'Nam';
+    String selectedRelationship = 'Bố';
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Thêm thành viên mới',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[900],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Tên',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: ageController,
+                        decoration: InputDecoration(
+                          labelText: 'Tuổi',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        value: selectedGender,
+                        decoration: InputDecoration(
+                          labelText: 'Giới tính',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        items: ['Nam', 'Nữ'].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              selectedGender = newValue;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        value: selectedRelationship,
+                        decoration: InputDecoration(
+                          labelText: 'Mối quan hệ',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        items: [
+                          'Bố',
+                          'Mẹ',
+                          'Con trai',
+                          'Con gái',
+                          'Ông',
+                          'Bà',
+                          'Khác'
+                        ].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              selectedRelationship = newValue;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Hủy'),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: () {
+                              if (nameController.text.isNotEmpty &&
+                                  ageController.text.isNotEmpty) {
+                                final newProfile = Profile(
+                                  id: DateTime.now()
+                                      .millisecondsSinceEpoch
+                                      .toString(),
+                                  name: nameController.text,
+                                  age: int.parse(ageController.text),
+                                  gender: selectedGender,
+                                  relationship: selectedRelationship,
+                                );
+                                setState(() {
+                                  _profiles.add(newProfile);
+                                  _currentProfile = newProfile;
+                                });
+                                _saveProfiles();
+                                Navigator.pop(context);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue[800],
+                            ),
+                            child: const Text('Thêm'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     client.disconnect();
@@ -200,7 +518,7 @@ class HomePageState extends State<HomePage> {
                   child: Row(
                     children: [
                       Text(
-                        fullName,
+                        _currentProfile?.name ?? fullName,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.black,
@@ -208,13 +526,81 @@ class HomePageState extends State<HomePage> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white,
-                        child: Icon(
-                          Icons.person,
-                          color: Color(0xFF1976D2),
+                      PopupMenuButton<String>(
+                        icon: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: Colors.white,
+                          child: Icon(
+                            Icons.person,
+                            color: Colors.blue[800],
+                          ),
                         ),
+                        itemBuilder: (BuildContext context) {
+                          return [
+                            ..._profiles.map((profile) => PopupMenuItem<String>(
+                                  value: profile.id,
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: Colors.blue[100],
+                                        child: Text(
+                                          profile.name[0].toUpperCase(),
+                                          style: TextStyle(
+                                            color: Colors.blue[900],
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              profile.name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${profile.age} tuổi - ${profile.relationship}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (_currentProfile?.id == profile.id)
+                                        Icon(Icons.check_circle,
+                                            color: Colors.green, size: 20),
+                                    ],
+                                  ),
+                                )),
+                            const PopupMenuDivider(),
+                            PopupMenuItem<String>(
+                              value: 'add',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.add_circle_outline,
+                                      color: Colors.blue[800]),
+                                  const SizedBox(width: 10),
+                                  const Text('Thêm thành viên mới'),
+                                ],
+                              ),
+                            ),
+                          ];
+                        },
+                        onSelected: (String value) {
+                          if (value == 'add') {
+                            _showAddProfileDialog();
+                          } else {
+                            _switchProfile(value);
+                          }
+                        },
                       ),
                     ],
                   ),
@@ -368,10 +754,25 @@ class HomeScreen extends StatelessWidget {
     required this.measurementHistory,
   });
 
+  Map<String, dynamic> _getLatestMeasurements() {
+    if (measurementHistory.isNotEmpty) {
+      return measurementHistory.first;
+    }
+    return {
+      'temperature': temperature,
+      'heartRate': heartRate,
+      'spo2': spo2,
+      'sys': sys,
+      'dia': dia,
+      'time': lastUpdated,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final topPadding = mediaQuery.padding.top;
+    final latestMeasurements = _getLatestMeasurements();
 
     return Container(
       color: Colors.white,
@@ -382,7 +783,6 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Dashboard container with health cards
               Container(
                 padding: EdgeInsets.all(15),
                 decoration: BoxDecoration(
@@ -402,14 +802,14 @@ class HomeScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Cập nhật lúc: $lastUpdated',
+                      'Cập nhật lúc: ${latestMeasurements['time']}',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.blue[700],
                         fontStyle: FontStyle.italic,
                       ),
                     ),
-                    SizedBox(height: 5),
+                    SizedBox(height: 10),
                     GridView.count(
                       crossAxisCount: 2,
                       shrinkWrap: true,
@@ -421,30 +821,37 @@ class HomeScreen extends StatelessWidget {
                         _buildHealthCard(
                           Icons.thermostat,
                           'Nhiệt độ',
-                          temperature == 0.0
+                          latestMeasurements['temperature'] == 0.0
                               ? '...'
-                              : '${temperature.toStringAsFixed(1)} °C',
+                              : '${latestMeasurements['temperature'].toStringAsFixed(1)} °C',
                           Colors.yellow[50]!,
                           Colors.yellow[800]!,
                         ),
                         _buildHealthCard(
                           Icons.favorite,
                           'Nhịp tim',
-                          heartRate == 0 ? '...' : '$heartRate bpm',
+                          latestMeasurements['heartRate'] == 0
+                              ? '...'
+                              : '${latestMeasurements['heartRate']} bpm',
                           Colors.pink[50]!,
                           Colors.pink[800]!,
                         ),
                         _buildHealthCard(
                           Icons.opacity,
                           'SpO2',
-                          spo2 == 0 ? '...' : '$spo2%',
+                          latestMeasurements['spo2'] == 0
+                              ? '...'
+                              : '${latestMeasurements['spo2']}%',
                           Colors.teal[50]!,
                           Colors.teal[800]!,
                         ),
                         _buildHealthCard(
                           Icons.bloodtype,
                           'Huyết áp',
-                          sys == 0 && dia == 0 ? '...' : '$sys/$dia mmHg',
+                          latestMeasurements['sys'] == 0 &&
+                                  latestMeasurements['dia'] == 0
+                              ? '...'
+                              : '${latestMeasurements['sys']}/${latestMeasurements['dia']} mmHg',
                           Colors.purple[50]!,
                           Colors.purple[800]!,
                         ),
