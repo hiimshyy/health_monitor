@@ -36,23 +36,6 @@ class NotificationScreenState extends State<NotificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          'Thông báo',
-          style: TextStyle(
-            color: Colors.white,
-            shadows: [
-              Shadow(
-                color: Colors.black.withAlpha(127),
-                offset: Offset(1, 1),
-                blurRadius: 3,
-              ),
-            ],
-          ),
-        ),
-        backgroundColor: Colors.blue[800],
-        elevation: 0,
-      ),
       body: _notifications.isEmpty
           ? Center(
               child: Column(
