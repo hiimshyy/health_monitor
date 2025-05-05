@@ -20,6 +20,8 @@ Eloquent::ML::Port::OneClassSVM svm;
 
 void displayIntro() {
   // Serial.println("Displaying intro screen");
+  // screen.displayFromSD("cce.bmp");
+  // screen.displayFromSD("DDT.bmp");
   screen.displayFromSD("logo.bmp");
   screen.displayInformation();
   screen.disableSDCard();

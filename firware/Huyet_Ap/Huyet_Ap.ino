@@ -1,7 +1,6 @@
 #include <avr/interrupt.h>
-// #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
-//#include <LiquidCrystal.h>
+
 #define on HIGH
 #define off LOW
 //define states for motor control
@@ -20,14 +19,14 @@
 #define stopState 11
 
 
-#define DT_PIN 2   // Chân DT kết nối với D2
-#define SCK_PIN 3  // Chân SCK kết nối với D3
+#define DOUT_PIN 2   // Chân DT kết nối với D2
+#define SCLK_PIN 3  // Chân SCK kết nối với D3
 
-#define valve 4 // khai bao chan valve khi
-#define motor 8 // k hai bao chan motor
-#define bt_start 7 // nut nhan start
-//LiquidCrystal_I2C lcd(0x27, 20, 4);  // Địa chỉ I2C của LCD (thường là 0x27 hoặc 0x3F), kích thước 20x4
+#define VALVE_PIN 4 // khai bao chan valve khi
+#define MOTOR_PIN 8 // khai bao chan motor
+#define START_PIN 7 // nut nhan start
 #define ADC0 A0
+
 unsigned char currentState;
 unsigned int timepress0, timepress1, timepress2, timelcd;      
 //declare variable for measuring and calculating value
@@ -71,19 +70,20 @@ void deflatestate(void);
 void display_state(void);
 void reset_state(void);
 void pressuremeasure(void);
+
 void setup() {
   //khai bao serial
   Serial.begin(115200);
-  // Khai báo chân SCK_PIN là OUTPUT và đặt mức LOW
-  pinMode(SCK_PIN, OUTPUT);
-  digitalWrite(SCK_PIN, LOW); // Đảm bảo SCK_PIN ở mức LOW khi khởi động
+  // Khai báo chân SCLK_PIN là OUTPUT và đặt mức LOW
+  pinMode(SCLK_PIN, OUTPUT);
+  digitalWrite(SCLK_PIN, LOW); // Đảm bảo SCLK_PIN ở mức LOW khi khởi động
 
-  // Khai báo chân DT_PIN là INPUT
-  pinMode(DT_PIN, INPUT);
-  pinMode(bt_start, INPUT);
+  // Khai báo chân DOUT_PIN là INPUT
+  pinMode(DOUT_PIN, INPUT);
+  pinMode(START_PIN, INPUT);
   //khai bao motor valve
-  pinMode(motor,OUTPUT);
-  pinMode(valve,OUTPUT);
+  pinMode(MOTOR_PIN,OUTPUT);
+  pinMode(VALVE_PIN,OUTPUT);
   //Cai dat LCD
   //set up timer0
   cli();              // tắt ngắt toàn cục
@@ -99,20 +99,20 @@ void setup() {
   sei();                      // cho phép ngắt toàn cục   
   //ket thuc khai bao ngat          
                                 
-  maxpressure = 215; // max huyet ap
+  maxpressure = 210; // max huyet ap
   meas_state = Sys_Measure; 
 
-  TH_sys=4.2; //nguong dao dong huyet ap tam thu
+  TH_sys = 4.2; //nguong dao dong huyet ap tam thu
   //TH_rate = 4.328; //nguong dao dong  
   TH_rate = 4.0; //nguong dao dong  
   //TH_rate = 2.5; //nguong dao dong  
   TH_dias = 3.5; // huyet ap tam truong
 
-  TH_sys2=3.8; //nguong dao dong huyet ap tam thu
+  TH_sys2 = 3.8; //nguong dao dong huyet ap tam thu
   TH_dias2 = 3.3; // huyet ap tam truong
   TH_rate2 = 3.5; //nguong dao dong  
 
-  former=TH_sys-0.01;
+  former = TH_sys - 0.01;
 
   timerun_dias=0; 
   time_pulse=0;
@@ -137,32 +137,32 @@ void setup() {
   count=0;
 
   // Khởi tạo trạng thái ban đầu cho motor và van
-  digitalWrite(valve, off);  // Van đóng
-  digitalWrite(motor, off);  // Motor tắt
+  digitalWrite(VALVE_PIN, off);  // Van đóng
+  digitalWrite(MOTOR_PIN, off);  // Motor tắt
 
 }
 
 long readHX710B() {
   long count2 = 0;
-  digitalWrite(SCK_PIN, LOW);
+  digitalWrite(SCLK_PIN, LOW);
   delayMicroseconds(1);
 
-  while (digitalRead(DT_PIN)); // Chờ cho DT xuống mức LOW (sẵn sàng để đọc)
+  while (digitalRead(DOUT_PIN)); // Chờ cho DT xuống mức LOW (sẵn sàng để đọc)
 
   for (int i = 0; i < 24; i++) { // Đọc 24 bit dữ liệu
-    digitalWrite(SCK_PIN, HIGH);
+    digitalWrite(SCLK_PIN, HIGH);
     delayMicroseconds(1);
     count2 = count2 << 1;
-    digitalWrite(SCK_PIN, LOW);
+    digitalWrite(SCLK_PIN, LOW);
     delayMicroseconds(1);
-    if (digitalRead(DT_PIN))
+    if (digitalRead(DOUT_PIN))
       count2++;
   }
 
   // Đọc bit điều khiển (nếu cần thiết)
-  digitalWrite(SCK_PIN, HIGH);
+  digitalWrite(SCLK_PIN, HIGH);
   delayMicroseconds(1);
-  digitalWrite(SCK_PIN, LOW);
+  digitalWrite(SCLK_PIN, LOW);
   delayMicroseconds(1);
 
   // Xử lý số âm cho giá trị 24 bit
@@ -191,7 +191,7 @@ void loop() {
      // Nhận lệnh từ ESP8266
     receiveCommandFromESP();
     // Đọc trạng thái nút nhấn vật lý
-    int reading = digitalRead(bt_start);
+    int reading = digitalRead(START_PIN);
     // Chống dội nút nhấn
     if (reading != lastButtonState) {
       lastDebounceTime = millis();
@@ -238,7 +238,7 @@ void loop() {
 }
 //chuong trinh phuc vu ngat 
 ISR (TIMER1_COMPA_vect) { 
-  if (digitalRead(bt_start)) timepress0++;
+  if (digitalRead(START_PIN)) timepress0++;
   else timepress0 = 0;
   timecount++;                      
   timedeflate++;
@@ -277,14 +277,14 @@ void start_state(void) {   //Serial.println("start_state");
     count_average=0;
     countpulse=0;
 
-  if((digitalRead(bt_start)) && (timepress0 > 30)) {
+  if((digitalRead(START_PIN)) && (timepress0 > 30)) {
     currentState = inflate2State;
     timepress0 = 0;  
     timecount = 0;
     bpMeasured = false;
     //turn on motor and close the valve
-    digitalWrite(valve,off);
-    digitalWrite(motor,on);
+    digitalWrite(VALVE_PIN,off);
+    digitalWrite(MOTOR_PIN,on);
   } 
 }
 void inflate2_state(void) {  
@@ -303,7 +303,7 @@ void inflate2_state(void) {
     stop_count = 0;
     
   if(stop_count>=5){
-    digitalWrite(motor, off);
+    digitalWrite(MOTOR_PIN, off);
     delay(1000);
     currentState = deflateState;   
     timedeflate = 0;    
@@ -381,15 +381,16 @@ void pressuremeasure(void) {
 }
 void sysmeasure(void) {
   pressure = readPressure();
+  pressure = pressure - 90;
   long data1;
   float adc_data11;
   data1 = readHX710B();
   delay(10);
-  adc_data11 = (((float)data1) / 8388607.0) * (5.0 );
+  adc_data11 = (((float)data1) / 8388607.0) * (5.0);
   float adc_data1 ;
   adc_data1 = adc_data11 - 0.41;
   pressure = ((adc_data1/128)/0.05*300)-90; 
-  //Serial.println(pressure);
+  // Serial.println(pressure);
   if(timing==0)
     read_adc(0);     
   if(sys_count>=2) { 
@@ -443,12 +444,12 @@ void diascal(void) {
 }
 void read_adc(int Channel) {
   switch (Channel) {
-  case 0:
-    data = readHX710B();
-    break;
-  case 1:
-    data = readHX710B();
-    break;
+    case 0:
+      data = readHX710B();
+      break;
+    case 1:
+      data = readHX710B();
+      break;
   }
   adc_data = (float)((((float)data)/8388607 * 5)-0.41);
  
@@ -466,7 +467,7 @@ void read_adc(int Channel) {
     }
     if(count==4) {
       press_data=accum_data/4;
-      systolic = (press_data/128)*6000 ;//calculate from adc_data
+      systolic = (press_data/256)*6000 ;//calculate from adc_data
       meas_state = Rate_Measure; 
       //meas_state = dias_Measure;
       countpulse=0;
@@ -498,19 +499,15 @@ void read_adc(int Channel) {
   }
   //------------------------------------------------------------- 
   else if(meas_state==dias_Cal) {     
-    diastolic = (adc_data/128)*6000 ;//calculate from adc_data
+    diastolic = (adc_data/256)*6000 ;//calculate from adc_data
     meas_state = Sys_Measure; 
     currentState = displayState;  
     //open valve
-    digitalWrite(valve,on);
+    digitalWrite(VALVE_PIN,on);
   }
   timing = 40;//set time for another conversion
 }// end of read ADC
-// void display_measurements() {
-  
-// }
-// void sendPressureData() {
-// }
+
 void sendBloodPressureData() {
   if (lastSentSystolic != systolic || lastSentDiastolic != diastolic){
     Serial.print("<SYS:");
@@ -528,8 +525,6 @@ float readPressure() {
     float adc_data1 = (((float)data1) / 8388607.0) * (5.0) - 0.41;
     return ((adc_data1 / 128) / 0.05 * 300);
 }
-// void displayPressure(float pressure) {
-// }
 
 void receiveCommandFromESP() {
   if (Serial.available()) {
@@ -558,14 +553,14 @@ void togglePhysicalMotor() {
     // Dừng hệ thống điều khiển từ nút nhấn vật lý
     isPhysicalRunning = false;
     currentState = resetState;
-    digitalWrite(motor, off);
-    digitalWrite(valve, on); // Xả khí
+    digitalWrite(MOTOR_PIN, off);
+    digitalWrite(VALVE_PIN, on); // Xả khí
   } else {
     // Bắt đầu hệ thống điều khiển từ nút nhấn vật lý
     isPhysicalRunning = true;
     currentState = startState;
-    digitalWrite(valve, off);
-    digitalWrite(motor, on);
+    digitalWrite(VALVE_PIN, off);
+    digitalWrite(MOTOR_PIN, on);
   }
 }
 
@@ -574,13 +569,13 @@ void toggleRemoteMotor() {
     // Dừng hệ thống điều khiển từ điện thoại
     isRemoteRunning = false;
     currentState = resetState;
-    digitalWrite(motor, off);
-    digitalWrite(valve, on); // Xả khí
+    digitalWrite(MOTOR_PIN, off);
+    digitalWrite(VALVE_PIN, on); // Xả khí
   } else {
     // Bắt đầu hệ thống điều khiển từ điện thoại
     isRemoteRunning = true;
-    digitalWrite(valve, off);
-    digitalWrite(motor, on);
+    digitalWrite(VALVE_PIN, off);
+    digitalWrite(MOTOR_PIN, on);
     currentState = inflate2State; 
   }
 }

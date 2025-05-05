@@ -30,27 +30,27 @@ class WelcomeScreenState extends State<WelcomeScreen> {
       _hasInternet = isConnected;
     });
 
-    if (!_hasInternet) {
-      if (!mounted) return;
+    if (!_hasInternet && mounted) {
       _showNoInternetDialog();
     }
   }
 
   void _showNoInternetDialog() {
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('No Internet!'),
-          content: Text('Vui lòng kiểm tra kết nối internet của bạn.'),
+          title: const Text('No Internet!'),
+          content: const Text('Vui lòng kiểm tra kết nối internet của bạn.'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 _checkInternetConnection();
               },
-              child: Text('Thử lại'),
+              child: const Text('Thử lại'),
             ),
           ],
         );
@@ -286,18 +286,15 @@ class __LoginDialogState extends State<_LoginDialog> {
                       debugPrint("Đăng nhập thành công với tài khoản admin");
                       bool isFirstLogin = await _checkFirstLogin();
                       if (!mounted) return;
-                      Navigator.pop(context);
+                      final navigator = Navigator.of(context);
+                      navigator.pop();
                       if (isFirstLogin) {
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
+                        navigator.pushReplacement(
                           MaterialPageRoute(
                               builder: (context) => UserProfileSetupScreen()),
                         );
                       } else {
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
+                        navigator.pushReplacement(
                           MaterialPageRoute(builder: (context) => HomePage()),
                         );
                       }
@@ -317,18 +314,15 @@ class __LoginDialogState extends State<_LoginDialog> {
                             "Đăng nhập với $emailOrPhone và mật khẩu: $password");
                         bool isFirstLogin = await _checkFirstLogin();
                         if (!mounted) return;
-                        Navigator.pop(context);
+                        final navigator = Navigator.of(context);
+                        navigator.pop();
                         if (isFirstLogin) {
-                          if (!mounted) return;
-                          Navigator.pushReplacement(
-                            context,
+                          navigator.pushReplacement(
                             MaterialPageRoute(
                                 builder: (context) => UserProfileSetupScreen()),
                           );
                         } else {
-                          if (!mounted) return;
-                          Navigator.pushReplacement(
-                            context,
+                          navigator.pushReplacement(
                             MaterialPageRoute(builder: (context) => HomePage()),
                           );
                         }
@@ -587,7 +581,7 @@ class __SignUpDialogState extends State<_SignUpDialog> {
                 ),
                 SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     String email = _emailController.text;
                     String phone = _phoneController.text;
                     String password = _passwordController.text;
@@ -603,6 +597,7 @@ class __SignUpDialogState extends State<_SignUpDialog> {
                         phoneError != null ||
                         passwordError != null ||
                         confirmPasswordError != null) {
+                      if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                             content: Text('Vui lòng kiểm tra lại thông tin')),
@@ -610,7 +605,9 @@ class __SignUpDialogState extends State<_SignUpDialog> {
                     } else {
                       debugPrint(
                           "Đăng ký với email: $email, số điện thoại: $phone, mật khẩu: $password");
-                      Navigator.pop(context);
+                      if (!mounted) return;
+                      final navigator = Navigator.of(context);
+                      navigator.pop();
                     }
                   },
                   style: ElevatedButton.styleFrom(
