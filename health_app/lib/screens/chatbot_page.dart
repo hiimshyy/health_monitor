@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert'; // Thêm thư viện này để xử lý JSON
+import 'package:http/http.dart' as http; // Thêm thư viện này để thực hiện HTTP requests
+import 'package:flutter_markdown/flutter_markdown.dart'; // Import thư viện markdown
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -17,26 +20,96 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     super.dispose();
   }
 
-  void _handleSubmitted(String text) {
-    _messageController.clear();
-    setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-      ));
-      // Simulate bot response
-      Future.delayed(const Duration(seconds: 1), () {
-        if (!mounted) return;
-        setState(() {
-          _messages.add(ChatMessage(
-            text:
-                'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?',
-            isUser: false,
-          ));
-        });
+Future<void> _handleSubmitted(String text) async {
+  _messageController.clear();
+
+  // Hiển thị tin nhắn người dùng
+  setState(() {
+    _messages.add(ChatMessage(text: text, isUser: true));
+    _messages.add(ChatMessage(text: '', isUser: false)); // Dành chỗ cho tin nhắn bot
+  });
+
+  final index = _messages.length - 1; // Vị trí của bot message
+  String buffer = '';
+
+  // Tạo lịch sử hội thoại
+  final List<Map<String, String>> history = _messages
+      .map((message) => {
+            "role": message.isUser ? "user" : "assistant",
+            "content": message.text,
+          })
+      .toList();
+
+  try {
+    final request = http.Request(
+      'POST',
+      Uri.parse('http://localhost:3000/api/chat/completions'),
+    )
+      ..headers.addAll({
+        'Authorization': 'Bearer sk-7462a3aa19e941d7ae7881b923542ff7',
+        'Content-Type': 'application/json',
+      })
+      ..body = jsonEncode({
+        "stream": true,
+        "model": "sthealthy",
+        "messages": history, // Gửi lịch sử hội thoại
       });
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final stream = response.stream.transform(utf8.decoder);
+
+      await for (final chunk in stream) {
+        for (final line in const LineSplitter().convert(chunk)) {
+          if (line.trim().isEmpty) continue; // Bỏ qua dòng trống
+          if (line.trim() == 'data: [DONE]') break; // Bỏ qua dòng kết thúc
+
+          // Loại bỏ tiền tố "data: " nếu có
+          final cleaned = line.replaceFirst(RegExp(r'^data:\s*'), '');
+
+          try {
+            // Parse JSON từ dòng đã được làm sạch
+            final jsonData = json.decode(cleaned) as Map<String, dynamic>;
+            final delta = jsonData['choices']?[0]?['delta']?['content'];
+
+            if (delta != null && delta.isNotEmpty) {
+              // Cập nhật buffer với từng phần dữ liệu nhận được
+              buffer += delta;
+
+              // Cập nhật giao diện ngay lập tức
+              setState(() {
+                _messages[index] = ChatMessage(
+                  text: buffer,
+                  isUser: false,
+                );
+              });
+            }
+          } catch (e) {
+            // Bỏ qua lỗi nếu dòng không phải JSON hợp lệ
+            debugPrint('Error parsing stream chunk: $e');
+          }
+        }
+      }
+    } else {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi: Không thể kết nối đến API.',
+          isUser: false,
+        );
+      });
+    }
+  } catch (e) {
+    setState(() {
+      _messages[index] = ChatMessage(
+        text: 'Lỗi: $e',
+        isUser: false,
+      );
     });
   }
+}
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +174,6 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     );
   }
 }
-
 class ChatMessage extends StatelessWidget {
   final String text;
   final bool isUser;
@@ -138,10 +210,12 @@ class ChatMessage extends StatelessWidget {
               color: isUser ? Colors.blue[800] : Colors.grey[200],
               borderRadius: BorderRadius.circular(20.0),
             ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: isUser ? Colors.white : Colors.black,
+            child: MarkdownBody(
+              data: text, // Hiển thị nội dung markdown
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(
+                  color: isUser ? Colors.white : Colors.black,
+                ),
               ),
             ),
           ),
