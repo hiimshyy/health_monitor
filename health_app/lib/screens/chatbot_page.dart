@@ -20,6 +20,29 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     super.dispose();
   }
 
+Future<void> _saveChatHistory(String userMessage, String botReply) async {
+  try {
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:5000/history_chat'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({
+        'user': userMessage,
+        'assistant': botReply,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      debugPrint('Lịch sử cuộc trò chuyện đã được lưu.');
+    } else {
+      debugPrint('Lỗi khi lưu lịch sử: ${response.body}');
+    }
+  } catch (e) {
+    debugPrint('Lỗi khi gửi yêu cầu lưu lịch sử: $e');
+  }
+}
+
 Future<void> _handleSubmitted(String text) async {
   _messageController.clear();
 
@@ -58,40 +81,42 @@ Future<void> _handleSubmitted(String text) async {
     final response = await request.send();
 
     if (response.statusCode == 200) {
-      final stream = response.stream.transform(utf8.decoder);
+  final stream = response.stream.transform(utf8.decoder);
 
-      await for (final chunk in stream) {
-        for (final line in const LineSplitter().convert(chunk)) {
-          if (line.trim().isEmpty) continue; // Bỏ qua dòng trống
-          if (line.trim() == 'data: [DONE]') break; // Bỏ qua dòng kết thúc
+  await for (final chunk in stream) {
+    for (final line in const LineSplitter().convert(chunk)) {
+      if (line.trim().isEmpty) continue; // Bỏ qua dòng trống
+      if (line.trim() == 'data: [DONE]') break; // Bỏ qua dòng kết thúc
 
-          // Loại bỏ tiền tố "data: " nếu có
-          final cleaned = line.replaceFirst(RegExp(r'^data:\s*'), '');
+      // Loại bỏ tiền tố "data: " nếu có
+      final cleaned = line.replaceFirst(RegExp(r'^data:\s*'), '');
 
-          try {
-            // Parse JSON từ dòng đã được làm sạch
-            final jsonData = json.decode(cleaned) as Map<String, dynamic>;
-            final delta = jsonData['choices']?[0]?['delta']?['content'];
+      try {
+        // Parse JSON từ dòng đã được làm sạch
+        final jsonData = json.decode(cleaned) as Map<String, dynamic>;
+        final delta = jsonData['choices']?[0]?['delta']?['content'];
 
-            if (delta != null && delta.isNotEmpty) {
-              // Cập nhật buffer với từng phần dữ liệu nhận được
-              buffer += delta;
+        if (delta != null && delta.isNotEmpty) {
+          // Cập nhật buffer với từng phần dữ liệu nhận được
+          buffer += delta;
 
-              // Cập nhật giao diện ngay lập tức
-              setState(() {
-                _messages[index] = ChatMessage(
-                  text: buffer,
-                  isUser: false,
-                );
-              });
-            }
-          } catch (e) {
-            // Bỏ qua lỗi nếu dòng không phải JSON hợp lệ
-            debugPrint('Error parsing stream chunk: $e');
-          }
+          // Cập nhật giao diện ngay lập tức
+          setState(() {
+            _messages[index] = ChatMessage(
+              text: buffer,
+              isUser: false,
+            );
+          });
         }
+      } catch (e) {
+        debugPrint('Error parsing stream chunk: $e');
       }
-    } else {
+    }
+  }
+
+  // Lưu lịch sử trò chuyện sau khi nhận phản hồi đầy đủ
+  await _saveChatHistory(text, buffer);
+} else {
       setState(() {
         _messages[index] = ChatMessage(
           text: 'Lỗi: Không thể kết nối đến API.',
