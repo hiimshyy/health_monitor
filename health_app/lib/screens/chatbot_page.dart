@@ -4,7 +4,12 @@ import 'package:http/http.dart' as http; // Thêm thư viện này để thực 
 import 'package:flutter_markdown/flutter_markdown.dart'; // Import thư viện markdown
 
 class ChatbotScreen extends StatefulWidget {
-  const ChatbotScreen({super.key});
+  final List<ChatMessage> initialMessages;
+
+  const ChatbotScreen({
+    super.key,
+    this.initialMessages = const [],
+  });
 
   @override
   ChatbotScreenState createState() => ChatbotScreenState();
@@ -12,7 +17,16 @@ class ChatbotScreen extends StatefulWidget {
 
 class ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final List<ChatMessage> _messages = [];
+  late List<ChatMessage> _messages;
+
+@override
+void initState() {
+  super.initState();
+  // Nếu không có tin nhắn ban đầu, khởi tạo danh sách trống
+  _messages = widget.initialMessages.isNotEmpty
+      ? widget.initialMessages
+      : [ChatMessage(text: 'Xin chào! Tôi có thể giúp gì cho bạn?', isUser: false)];
+}
 
   @override
   void dispose() {
@@ -66,15 +80,15 @@ Future<void> _handleSubmitted(String text) async {
   try {
     final request = http.Request(
       'POST',
-      Uri.parse('http://localhost:3000/api/chat/completions'),
+      Uri.parse('https://chat.hacfe.io.vn/api/chat/completions'),
     )
       ..headers.addAll({
-        'Authorization': 'Bearer sk-7462a3aa19e941d7ae7881b923542ff7',
+        'Authorization': 'Bearer sk-05e4688dd2794cfc89850827b07530c2',
         'Content-Type': 'application/json',
       })
       ..body = jsonEncode({
         "stream": true,
-        "model": "sthealthy",
+        "model": "veronai2",
         "messages": history, // Gửi lịch sử hội thoại
       });
 

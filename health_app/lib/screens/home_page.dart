@@ -225,7 +225,7 @@ class HomePageState extends State<HomePage> {
               backgroundColor: Colors.blue[800],
               elevation: 0,
               title: const Text(
-                'Chatbot',
+                'Chatbot2',
                 style: TextStyle(
                   color: Colors.white,
                   shadows: [
