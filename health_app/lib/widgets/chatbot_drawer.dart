@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 class ChatbotDrawer extends StatefulWidget {
   final String fullName;
-  final List<Map<String, dynamic>> chatHistory;
+  final List<Map<String, dynamic>> chatHistory; // Thêm tham số này
   final Function(Map<String, dynamic>)? onChatSelected;
   final VoidCallback? onNewChat;
 
   const ChatbotDrawer({
     super.key,
     required this.fullName,
-    this.chatHistory = const [],
+    required this.chatHistory, // Thêm tham số này
     this.onChatSelected,
     this.onNewChat,
   });
@@ -25,20 +26,43 @@ class _ChatbotDrawerState extends State<ChatbotDrawer> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _filteredChatHistory = [];
   final Map<String, List<Map<String, dynamic>>> _groupedChats = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredChatHistory = widget.chatHistory;
-    _groupChatsByDate();
+    _fetchChatHistory();
   }
 
-  @override
-  void didUpdateWidget(ChatbotDrawer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.chatHistory != widget.chatHistory) {
-      _filteredChatHistory = widget.chatHistory;
-      _groupChatsByDate();
+  Future<void> _fetchChatHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:5000/id_conversation?&user_id=1'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> conversationIds = jsonDecode(response.body);
+        final List<Map<String, dynamic>> chatHistory = conversationIds
+            .map((id) => {
+                  'id': id,
+                  'title': 'Trò chuyện số $id',
+                  'time': DateTime.now().toString(),
+                })
+            .toList();
+
+        setState(() {
+          _filteredChatHistory = chatHistory;
+          _groupChatsByDate();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Failed to load chat history');
+      }
+    } catch (e) {
+      debugPrint('Error fetching chat history: $e');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -76,13 +100,12 @@ class _ChatbotDrawerState extends State<ChatbotDrawer> {
   void _filterChats(String query) {
     setState(() {
       if (query.isEmpty) {
-        _filteredChatHistory = widget.chatHistory;
+        _fetchChatHistory();
       } else {
-        _filteredChatHistory = widget.chatHistory.where((chat) {
+        _filteredChatHistory = _filteredChatHistory.where((chat) {
           final title = (chat['title'] ?? '').toString().toLowerCase();
-          final message = (chat['lastMessage'] ?? '').toString().toLowerCase();
           final searchLower = query.toLowerCase();
-          return title.contains(searchLower) || message.contains(searchLower);
+          return title.contains(searchLower);
         }).toList();
       }
       _groupChatsByDate();
@@ -151,103 +174,69 @@ class _ChatbotDrawerState extends State<ChatbotDrawer> {
               ),
             ),
             Expanded(
-              child: _filteredChatHistory.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.chat_bubble_outline,
-                            size: 30,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            _searchController.text.isEmpty
-                                ? 'Chưa có lịch sử chat'
-                                : 'Không tìm thấy kết quả',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _groupedChats.length,
-                      itemBuilder: (context, index) {
-                        final date = _groupedChats.keys.elementAt(index);
-                        final chats = _groupedChats[date]!;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(left: 16),
-                              child: Text(
-                                _formatDate(date),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredChatHistory.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                size: 30,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _searchController.text.isEmpty
+                                    ? 'Chưa có lịch sử chat'
+                                    : 'Không tìm thấy kết quả',
                                 style: TextStyle(
                                   color: Colors.grey[600],
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
                                 ),
                               ),
-                            ),
-                            ...chats.map((chat) => ListTile(
-                                  leading: null,
-                                  title: Text(
-                                    chat['title'] ?? 'Cuộc trò chuyện',
-                                    style: const TextStyle(
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _groupedChats.length,
+                          itemBuilder: (context, index) {
+                            final date = _groupedChats.keys.elementAt(index);
+                            final chats = _groupedChats[date]!;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 16),
+                                  child: Text(
+                                    _formatDate(date),
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  subtitle: null,
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 20),
-                                    color: Colors.grey[500],
-                                    onPressed: () async {
-                                      final prefs =
-                                          await SharedPreferences.getInstance();
-                                      final history =
-                                          prefs.getString('chatHistory');
-                                      if (history != null) {
-                                        final List<dynamic> chats =
-                                            jsonDecode(history);
-                                        final index = chats.indexWhere((c) =>
-                                            c['time'] == chat['time'] &&
-                                            c['title'] == chat['title']);
-                                        if (index != -1) {
-                                          chats.removeAt(index);
-                                          await prefs.setString(
-                                              'chatHistory', jsonEncode(chats));
-                                          if (mounted) {
-                                            setState(() {
-                                              _filteredChatHistory.removeWhere(
-                                                  (c) =>
-                                                      c['time'] ==
-                                                          chat['time'] &&
-                                                      c['title'] ==
-                                                          chat['title']);
-                                              _groupChatsByDate();
-                                            });
-                                          }
+                                ),
+                                ...chats.map((chat) => ListTile(
+                                      title: Text(
+                                        chat['title'] ?? 'Cuộc trò chuyện',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      onTap: () {
+                                        if (widget.onChatSelected != null) {
+                                          widget.onChatSelected!(chat);
                                         }
-                                      }
-                                    },
-                                  ),
-                                  onTap: () {
-                                    if (widget.onChatSelected != null) {
-                                      widget.onChatSelected!(chat);
-                                    }
-                                    Navigator.pop(context);
-                                  },
-                                )),
-                          ],
-                        );
-                      },
-                    ),
+                                        Navigator.pop(context);
+                                      },
+                                    )),
+                              ],
+                            );
+                          },
+                        ),
             ),
           ],
         ),

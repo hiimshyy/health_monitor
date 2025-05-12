@@ -2,11 +2,51 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'chatbot_page.dart';
 import 'notification_page.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/chatbot_drawer.dart';
+
+// Thêm class UserProfile để parse dữ liệu từ API
+class UserProfile {
+  final String fullname;
+  final String email;
+  final String phone;
+  final int dayOfBirth;
+  final int monthOfBirth;
+  final int yearOfBirth;
+  final String gender;
+  final double height;
+  final double weight;
+
+  UserProfile({
+    required this.fullname,
+    required this.email,
+    required this.phone,
+    required this.dayOfBirth,
+    required this.monthOfBirth,
+    required this.yearOfBirth,
+    required this.gender,
+    required this.height,
+    required this.weight,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      fullname: json['fullname'] ?? '',
+      email: json['email'] ?? '',
+      phone: json['phone'] ?? '',
+      dayOfBirth: json['day_of_birth'] ?? 1,
+      monthOfBirth: json['month_of_birth'] ?? 1,
+      yearOfBirth: json['year_of_birth'] ?? 2000,
+      gender: json['gender'] ?? '',
+      height: (json['height'] ?? 0).toDouble(),
+      weight: (json['weight'] ?? 0).toDouble(),
+    );
+  }
+}
 
 class Profile {
   final String id;
@@ -45,8 +85,8 @@ class Profile {
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
+  final int userId;
+  const HomePage({super.key, required this.userId});
   @override
   HomePageState createState() => HomePageState();
 }
@@ -82,11 +122,55 @@ class HomePageState extends State<HomePage> {
 
   Future<void> _loadUserData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      fullName = prefs.getString('fullName') ?? 'Người dùng';
-    });
+    
+    try {
+      // Gọi API để lấy thông tin profile
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:5000/get_profile?user_id=${widget.userId}')
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['message'] == "Profile retrieved successfully") {
+          // Parse dữ liệu profile
+          final userProfile = UserProfile.fromJson(data['profile']);
+          
+          // Cập nhật fullName trong SharedPreferences
+          await prefs.setString('fullName', userProfile.fullname);
+          
+          if (!mounted) return;
+          
+          // Cập nhật state với fullName mới
+          setState(() {
+            fullName = userProfile.fullname;
+          });
+          
+          print('Đã cập nhật fullName: $fullName');
+        } else {
+          print('Lỗi: ${data['message']}');
+          // Fallback nếu không thể lấy được thông tin từ API
+          setState(() {
+            fullName = 'Người dùng ${widget.userId}';
+          });
+        }
+      } else {
+        print('Lỗi kết nối: ${response.statusCode}');
+        // Fallback nếu không thể kết nối đến API
+        setState(() {
+          fullName = 'Người dùng ${widget.userId}';
+        });
+      }
+    } catch (e) {
+      print('Lỗi khi gọi API: $e');
+      // Fallback khi có lỗi
+      if (!mounted) return;
+      setState(() {
+        fullName = 'Người dùng ${widget.userId}';
+      });
+    }
   }
+
 
   Future<void> _loadProfiles() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -528,7 +612,7 @@ class HomePageState extends State<HomePage> {
                 ),
               ],
             ),
-            drawer: CustomDrawer(fullName: fullName),
+            drawer: CustomDrawer(fullName: fullName, user_id: widget.userId),
             body: HomeScreen(
               temperature: temperature,
               heartRate: heartRate,

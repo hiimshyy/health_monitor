@@ -6,10 +6,12 @@ import '../screens/welcom_page.dart';
 
 class CustomDrawer extends StatelessWidget {
   final String fullName;
-
+  final int user_id; // Đã thêm user_id làm tham số
+  
   const CustomDrawer({
     super.key,
     required this.fullName,
+    required this.user_id,
   });
 
   @override
@@ -65,7 +67,7 @@ class CustomDrawer extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const PersonalInfoScreen(),
+                  builder: (context) => PersonalInfoScreen(user_id: user_id), // Đã sửa đúng thành user_id
                 ),
               );
             },
