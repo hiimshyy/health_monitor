@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http; // Thêm dòng này
+import 'dart:convert';
 
 class PersonalInfoScreen extends StatefulWidget {
-  const PersonalInfoScreen({super.key});
+  final int user_id;
+  const PersonalInfoScreen({super.key, required this.user_id,});
 
   @override
   PersonalInfoScreenState createState() => PersonalInfoScreenState();
@@ -39,22 +42,37 @@ class PersonalInfoScreenState extends State<PersonalInfoScreen> {
     _loadUserData();
   }
 
-  Future<void> _loadUserData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      fullName = prefs.getString('fullName') ?? '';
-      gender = prefs.getString('gender') ?? '';
-      birthDay = prefs.getInt('birthDay');
-      birthMonth = prefs.getInt('birthMonth');
-      birthYear = prefs.getInt('birthYear');
-      height = prefs.getString('height') ?? '';
-      weight = prefs.getString('weight') ?? '';
+Future<void> _loadUserData() async {
+  try {
+    print(widget.user_id);
+    final response = await http.get(
+      Uri.parse('http://127.0.0.1:5000/get_profile?user_id=${widget.user_id}')
+    );
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final profile = data['profile'];
+      
+      setState(() {
+        fullName = profile['fullname'] ?? '';
+        gender = profile['gender'] ?? 'Nữ';
+        birthDay = profile['day_of_birth'];
+        birthMonth = profile['month_of_birth'];
+        birthYear = profile['year_of_birth'];
+        height = profile['height']?.toString() ?? '';
+        weight = profile['weight']?.toString() ?? '';
 
-      _fullNameController.text = fullName;
-      _heightController.text = height;
-      _weightController.text = weight;
-    });
+        _fullNameController.text = fullName;
+        _heightController.text = height;
+        _weightController.text = weight;
+      });
+    } else {
+      print('Failed to load profile. Status code: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Error loading profile: $e');
   }
+}
 
   Future<void> _saveUserData() async {
     if (!_formKey.currentState!.validate()) return;

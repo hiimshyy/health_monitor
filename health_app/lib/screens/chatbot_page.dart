@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -8,10 +10,7 @@ import 'dart:io';
 class ChatbotScreen extends StatefulWidget {
   final Function(List<Map<String, dynamic>>)? onChatHistoryUpdated;
 
-  const ChatbotScreen({
-    super.key,
-    this.onChatHistoryUpdated,
-  });
+  const ChatbotScreen({super.key, this.onChatHistoryUpdated});
 
   @override
   ChatbotScreenState createState() => ChatbotScreenState();
@@ -46,50 +45,80 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       setState(() {
         _chatHistory = List<Map<String, dynamic>>.from(jsonDecode(history));
       });
-      if (widget.onChatHistoryUpdated != null) {
-        widget.onChatHistoryUpdated!(_chatHistory);
-      }
+      widget.onChatHistoryUpdated?.call(_chatHistory);
     }
   }
 
-  Future<void> _saveChatHistory() async {
+  Future<void> _saveChatHistoryLocally() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('chatHistory', jsonEncode(_chatHistory));
-    if (widget.onChatHistoryUpdated != null) {
-      widget.onChatHistoryUpdated!(_chatHistory);
+    widget.onChatHistoryUpdated?.call(_chatHistory);
+  }
+
+  Future<void> _saveChatHistory(String userMessage, String botReply) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5000/history_chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'user': userMessage,
+          'assistant': botReply,
+          'conversation_id': _currentChatId,
+          'user_id': 1,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('conversation_id: $_currentChatId');
+        debugPrint('Lịch sử cuộc trò chuyện đã được lưu.');
+      } else {
+        debugPrint('Lỗi khi lưu lịch sử: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Lỗi khi gửi yêu cầu lưu lịch sử: $e');
     }
   }
 
   Future<void> _startNewChat() async {
-    final newChatId = DateTime.now().millisecondsSinceEpoch.toString();
-    final welcomeMessage =
-        'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?';
+    try {
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:5000/id_conversation?&user_id=1'),
+      );
 
-    setState(() {
-      _currentChatId = newChatId;
-      _messages.clear();
-      _messages.add(ChatMessage(
-        text: welcomeMessage,
-        isUser: false,
-      ));
-    });
+      if (response.statusCode == 200) {
+        final List<dynamic> conversationIds = jsonDecode(response.body);
+        final newChatId = (conversationIds.isNotEmpty
+                ? (conversationIds.cast<int>().reduce((a, b) => a > b ? a : b) + 1)
+                : 1)
+            .toString();
 
-    // Save new chat to history immediately
-    final chatData = {
-      'id': newChatId,
-      'title': 'Cuộc trò chuyện mới',
-      'lastMessage': welcomeMessage,
-      'time': DateTime.now().toString(),
-      'messages': jsonEncode([
-        {
-          'text': welcomeMessage,
-          'isUser': false,
-        }
-      ]),
-    };
+        const welcomeMessage =
+            'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?';
 
-    _chatHistory.insert(0, chatData);
-    await _saveChatHistory();
+        setState(() {
+          _currentChatId = newChatId;
+          _messages.clear();
+          _messages.add(ChatMessage(text: welcomeMessage, isUser: false));
+        });
+
+        final chatData = {
+          'id': newChatId,
+          'title': 'Cuộc trò chuyện mới',
+          'lastMessage': welcomeMessage,
+          'time': DateTime.now().toString(),
+          'messages': jsonEncode([
+            {'text': welcomeMessage, 'isUser': false}
+          ]),
+        };
+
+        _chatHistory.insert(0, chatData);
+        await _saveChatHistoryLocally();
+      } else {
+        throw Exception('Failed to fetch conversation IDs');
+      }
+    } catch (e) {
+      debugPrint('Error starting new chat: $e');
+    }
   }
 
   Future<void> _handleSubmitted(String text) async {
@@ -97,84 +126,92 @@ class ChatbotScreenState extends State<ChatbotScreen> {
 
     _messageController.clear();
     setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-        attachmentPath: _currentAttachmentPath,
-        attachmentType: _currentAttachmentType,
-      ));
-      _currentAttachmentPath = null;
-      _currentAttachmentType = null;
+      _messages.add(ChatMessage(text: text, isUser: true));
+      _messages.add(ChatMessage(text: '', isUser: false)); // Placeholder
       _isTyping = true;
     });
 
-    // Simulate bot response
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
+    final index = _messages.length - 1;
+    String buffer = '';
 
-    final botResponse = _getBotResponse(text);
-    setState(() {
-      _isTyping = false;
-      _messages.add(ChatMessage(
-        text: botResponse,
-        isUser: false,
-      ));
-    });
+    final List<Map<String, String>> history = _messages
+        .map((message) => {
+              "role": message.isUser ? "user" : "assistant",
+              "content": message.text,
+            })
+        .toList();
 
-    // Update chat history
-    final chatData = {
-      'id': _currentChatId,
-      'title': text.length > 30 ? '${text.substring(0, 30)}...' : text,
-      'lastMessage': text,
-      'time': DateTime.now().toString(),
-      'messages': jsonEncode(_messages
-          .map((msg) => {
-                'text': msg.text,
-                'isUser': msg.isUser,
-              })
-          .toList()),
-    };
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('https://chat.hacfe.io.vn/api/chat/completions'),
+      )
+        ..headers.addAll({
+          'Authorization': 'Bearer sk-05e4688dd2794cfc89850827b07530c2',
+          'Content-Type': 'application/json',
+        })
+        ..body = jsonEncode({
+          "stream": true,
+          "model": "veronai2",
+          "messages": history,
+        });
 
-    final existingIndex =
-        _chatHistory.indexWhere((chat) => chat['id'] == _currentChatId);
-    if (existingIndex != -1) {
-      _chatHistory[existingIndex] = chatData;
-    } else {
-      _chatHistory.insert(0, chatData);
-    }
+      final response = await request.send();
 
-    await _saveChatHistory();
-  }
+      if (response.statusCode == 200) {
+        final stream = response.stream.transform(utf8.decoder);
 
-  String _getBotResponse(String userMessage) {
-    // Simple response logic - can be enhanced with more sophisticated AI
-    final lowerMessage = userMessage.toLowerCase();
-    if (lowerMessage.contains('xin chào') || lowerMessage.contains('hello')) {
-      return 'Xin chào! Tôi có thể giúp gì cho bạn?';
-    } else if (lowerMessage.contains('sức khỏe') ||
-        lowerMessage.contains('health')) {
-      return 'Tôi có thể giúp bạn theo dõi và tư vấn về sức khỏe. Bạn muốn biết thông tin gì?';
-    } else if (lowerMessage.contains('huyết áp') ||
-        lowerMessage.contains('blood pressure')) {
-      return 'Huyết áp bình thường là 120/80 mmHg. Bạn có thể theo dõi chỉ số huyết áp của mình trong ứng dụng.';
-    } else if (lowerMessage.contains('nhịp tim') ||
-        lowerMessage.contains('heart rate')) {
-      return 'Nhịp tim bình thường ở người lớn là 60-100 nhịp/phút. Bạn có thể theo dõi nhịp tim của mình trong ứng dụng.';
-    } else if (lowerMessage.contains('nhiệt độ') ||
-        lowerMessage.contains('temperature')) {
-      return 'Nhiệt độ cơ thể bình thường là 37°C. Bạn có thể theo dõi nhiệt độ của mình trong ứng dụng.';
-    } else if (lowerMessage.contains('spo2') ||
-        lowerMessage.contains('oxygen')) {
-      return 'Chỉ số SpO2 bình thường là 95-100%. Bạn có thể theo dõi chỉ số SpO2 của mình trong ứng dụng.';
-    } else {
-      return 'Tôi hiểu câu hỏi của bạn. Bạn có thể cho tôi biết thêm chi tiết không?';
+        await for (final chunk in stream) {
+          for (final line in const LineSplitter().convert(chunk)) {
+            if (line.trim().isEmpty) continue;
+            if (line.trim() == 'data: [DONE]') break;
+
+            final cleaned = line.replaceFirst(RegExp(r'^data:\s*'), '');
+
+            try {
+              final jsonData = json.decode(cleaned) as Map<String, dynamic>;
+              final delta = jsonData['choices']?[0]?['delta']?['content'];
+
+              if (delta != null && delta.isNotEmpty) {
+                buffer += delta;
+
+                setState(() {
+                  _messages[index] = ChatMessage(text: buffer, isUser: false);
+                });
+              }
+            } catch (e) {
+              debugPrint('Error parsing stream chunk: $e');
+            }
+          }
+        }
+
+        await _saveChatHistory(text, buffer);
+      } else {
+        setState(() {
+          _messages[index] = ChatMessage(
+            text: 'Lỗi: Không thể kết nối đến API.',
+            isUser: false,
+          );
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi: $e',
+          isUser: false,
+        );
+      });
+    } finally {
+      setState(() {
+        _isTyping = false;
+      });
     }
   }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: source);
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: source);
       if (image != null) {
         setState(() {
           _currentAttachmentPath = image.path;
@@ -188,7 +225,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
 
   Future<void> _pickFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      final result = await FilePicker.platform.pickFiles();
       if (result != null) {
         setState(() {
           _currentAttachmentPath = result.files.single.path!;
@@ -244,133 +281,72 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(
-          color: Colors.grey[300]!,
-          width: 1.0,
-        ),
+        border: Border.all(color: Colors.grey[300]!, width: 1.0),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_currentAttachmentPath != null) _buildAttachmentPreview(),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.attach_file),
-                color: Colors.black,
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.insert_drive_file),
-                              title: const Text('Tập tin'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _pickFile();
-                              },
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.camera_alt),
-                              title: const Text('Camera'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _pickImage(ImageSource.camera);
-                              },
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.photo),
-                              title: const Text('Ảnh'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _pickImage(ImageSource.gallery);
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _messageController,
-                  decoration: const InputDecoration(
-                    hintText: 'Hỏi bất cứ điều gì',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 8.0),
-                  ),
-                  onSubmitted: _handleSubmitted,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                color: Colors.black,
-                onPressed: () {
-                  if (_messageController.text.isNotEmpty ||
-                      _currentAttachmentPath != null) {
-                    _handleSubmitted(_messageController.text);
-                  }
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAttachmentPreview() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         children: [
-          if (_currentAttachmentType == 'image')
-            Container(
-              width: 60,
-              height: 60,
-              margin: const EdgeInsets.only(right: 8.0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8.0),
-                image: DecorationImage(
-                  image: FileImage(File(_currentAttachmentPath!)),
-                  fit: BoxFit.cover,
-                ),
-              ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              margin: const EdgeInsets.only(right: 8.0),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.insert_drive_file, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    _currentAttachmentPath!.split('/').last,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
           IconButton(
-            icon: const Icon(Icons.close, size: 20),
+            icon: const Icon(Icons.attach_file),
+            color: Colors.black,
             onPressed: () {
-              setState(() {
-                _currentAttachmentPath = null;
-                _currentAttachmentType = null;
-              });
+              showModalBottomSheet(
+                context: context,
+                builder: (BuildContext context) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.insert_drive_file),
+                          title: const Text('Tập tin'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _pickFile();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.camera_alt),
+                          title: const Text('Camera'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _pickImage(ImageSource.camera);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.photo),
+                          title: const Text('Ảnh'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _pickImage(ImageSource.gallery);
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: const InputDecoration(
+                hintText: 'Hỏi bất cứ điều gì',
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8.0),
+              ),
+              onSubmitted: _handleSubmitted,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send),
+            color: Colors.black,
+            onPressed: () {
+              if (_messageController.text.isNotEmpty ||
+                  _currentAttachmentPath != null) {
+                _handleSubmitted(_messageController.text);
+              }
             },
           ),
         ],
@@ -426,6 +402,8 @@ class _TypingIndicator extends StatelessWidget {
     );
   }
 }
+
+
 
 class ChatMessage extends StatelessWidget {
   final String text;

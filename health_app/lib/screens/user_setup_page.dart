@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'home_page.dart';
 
 class UserProfileSetupScreen extends StatefulWidget {
-  const UserProfileSetupScreen({super.key});
+  final int userId;
+
+  const UserProfileSetupScreen({super.key, required this.userId});
 
   @override
   UserProfileSetupScreenState createState() => UserProfileSetupScreenState();
@@ -24,6 +27,12 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
   final List<int> _months = List.generate(12, (index) => index + 1);
   final List<int> _years =
       List.generate(100, (index) => DateTime.now().year - index);
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('User ID: ${widget.userId}'); // Kiểm tra userId được truyền
+  }
 
   @override
   void dispose() {
@@ -55,26 +64,58 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
         ),
       );
     } else {
-      // Lưu thông tin cá nhân vào SharedPreferences
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('fullName', fullName);
-      await prefs.setString('gender', gender);
-      await prefs.setInt('birthDay', _selectedDay!);
-      await prefs.setInt('birthMonth', _selectedMonth!);
-      await prefs.setInt('birthYear', _selectedYear!);
-      await prefs.setString('height', height);
-      await prefs.setString('weight', weight);
+      try {
+        // Gửi yêu cầu POST đến API
+        final response = await http.post(
+          Uri.parse('http://127.0.0.1:5000/update_user'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'user_id': widget.userId, // Sử dụng userId được truyền vào
+            'fullname': fullName,
+            'gender': gender,
+            'day_of_birth': _selectedDay,
+            'month_of_birth': _selectedMonth,
+            'year_of_birth': _selectedYear,
+            'height': int.tryParse(height),
+            'weight': int.tryParse(weight),
+          }),
+        );
 
-      debugPrint("Lưu thông tin: Họ và tên: $fullName, Giới tính: $gender, "
-          "Ngày sinh: $_selectedDay/$_selectedMonth/$_selectedYear, "
-          "Chiều cao: $height cm, Cân nặng: $weight kg");
+        if (response.statusCode == 200) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cập nhật thông tin thành công!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
 
-      // Chuyển hướng đến HomePage
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
-      );
+          // Chuyển hướng đến HomePage
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => HomePage(userId: widget.userId)),
+          );
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${response.body}'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi kết nối: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 

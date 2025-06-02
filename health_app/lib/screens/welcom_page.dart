@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http; // Thêm dòng này
+import 'dart:convert'; // Thêm dòng này nếu chưa có
 import 'user_setup_page.dart'; // Import màn hình mới
 import 'home_page.dart';
 
@@ -198,16 +200,25 @@ class __LoginDialogState extends State<_LoginDialog> {
     return null;
   }
 
-  Future<bool> _checkFirstLogin() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool isFirstLogin = prefs.getBool('isFirstLogin') ??
-        true; // Mặc định là true nếu chưa có giá trị
-    if (isFirstLogin) {
-      await prefs.setBool(
-          'isFirstLogin', false); // Đánh dấu đã đăng nhập lần đầu
+Future<bool> _checkFirstLogin(int userId) async {
+  try {
+    // Gửi yêu cầu GET đến API
+    final response = await http.get(
+      Uri.parse('http://127.0.0.1:5000/check_fullname?user_id=$userId'),
+    );
+
+    // Kiểm tra trạng thái phản hồi
+    if (response.statusCode == 200) {
+      return true; // Nếu trả về 200, full_name đã tồn tại
+    } else {
+      return false; // Nếu không, full_name chưa được thiết lập
     }
-    return isFirstLogin;
+  } catch (e) {
+    // Xử lý lỗi kết nối
+    debugPrint('Lỗi khi kiểm tra full_name: $e');
+    return false; // Mặc định trả về false nếu có lỗi
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -279,71 +290,86 @@ class __LoginDialogState extends State<_LoginDialog> {
                 SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () async {
-                    String emailOrPhone = _emailOrPhoneController.text;
-                    String password = _passwordController.text;
+  String emailOrPhone = _emailOrPhoneController.text;
+  String password = _passwordController.text;
 
-                    if (emailOrPhone == 'admin' && password == 'admin') {
-                      debugPrint("Đăng nhập thành công với tài khoản admin");
-                      bool isFirstLogin = await _checkFirstLogin();
-                      if (!mounted) return;
-                      final navigator = Navigator.of(context);
-                      navigator.pop();
-                      if (isFirstLogin) {
-                        navigator.pushReplacement(
-                          MaterialPageRoute(
-                              builder: (context) => UserProfileSetupScreen()),
-                        );
-                      } else {
-                        navigator.pushReplacement(
-                          MaterialPageRoute(builder: (context) => HomePage()),
-                        );
-                      }
-                    } else {
-                      String? emailOrPhoneError =
-                          _validateEmailOrPhone(emailOrPhone);
-                      String? passwordError = _validatePassword(password);
+  String? emailOrPhoneError = _validateEmailOrPhone(emailOrPhone);
+  String? passwordError = _validatePassword(password);
 
-                      if (emailOrPhoneError != null || passwordError != null) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text('Vui lòng kiểm tra lại thông tin')),
-                        );
-                      } else {
-                        debugPrint(
-                            "Đăng nhập với $emailOrPhone và mật khẩu: $password");
-                        bool isFirstLogin = await _checkFirstLogin();
-                        if (!mounted) return;
-                        final navigator = Navigator.of(context);
-                        navigator.pop();
-                        if (isFirstLogin) {
-                          navigator.pushReplacement(
-                            MaterialPageRoute(
-                                builder: (context) => UserProfileSetupScreen()),
-                          );
-                        } else {
-                          navigator.pushReplacement(
-                            MaterialPageRoute(builder: (context) => HomePage()),
-                          );
-                        }
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  child: Text(
-                    'ĐĂNG NHẬP',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+  if (emailOrPhoneError != null || passwordError != null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Vui lòng kiểm tra lại thông tin')),
+    );
+  } else {
+    try {
+      // Gửi yêu cầu POST đến API
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5000/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': emailOrPhone,
+          'password': password,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        if (!mounted) return;
+
+        // Phân tích phản hồi JSON để lấy userId
+        final responseData = json.decode(response.body) as Map<String, dynamic>;
+        int userId = responseData['user_id'];
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đăng nhập thành công!')),
+        );
+
+        // Tiến hành kiểm tra và chuyển hướng dựa trên userId
+        bool isFirstLogin = await _checkFirstLogin(userId);
+        final navigator = Navigator.of(context);
+        navigator.pop(); // Đóng dialog
+        if (isFirstLogin) {
+          navigator.pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => UserProfileSetupScreen(userId: userId),
+            ),
+          );
+        } else {
+          navigator.pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => HomePage(userId: userId),
+            ),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: ${response.body}')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi kết nối: $e')),
+      );
+    }
+  }
+},
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.blue[800],
+    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(25),
+    ),
+  ),
+  child: const Text(
+    'ĐĂNG NHẬP',
+    style: TextStyle(
+      fontSize: 16,
+      color: Colors.white,
+    ),
+  ),
+),
                 SizedBox(height: 20),
                 Text(
                   'Hoặc đăng nhập bằng',
@@ -581,50 +607,74 @@ class __SignUpDialogState extends State<_SignUpDialog> {
                 ),
                 SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () async {
-                    String email = _emailController.text;
-                    String phone = _phoneController.text;
-                    String password = _passwordController.text;
-                    String confirmPassword = _confirmPasswordController.text;
+  onPressed: () async {
+    String email = _emailController.text;
+    String phone = _phoneController.text;
+    String password = _passwordController.text;
+    String confirmPassword = _confirmPasswordController.text;
 
-                    String? emailError = _validateEmail(email);
-                    String? phoneError = _validatePhone(phone);
-                    String? passwordError = _validatePassword(password);
-                    String? confirmPasswordError =
-                        _validateConfirmPassword(password, confirmPassword);
+    String? emailError = _validateEmail(email);
+    String? phoneError = _validatePhone(phone);
+    String? passwordError = _validatePassword(password);
+    String? confirmPasswordError =
+        _validateConfirmPassword(password, confirmPassword);
 
-                    if (emailError != null ||
-                        phoneError != null ||
-                        passwordError != null ||
-                        confirmPasswordError != null) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Vui lòng kiểm tra lại thông tin')),
-                      );
-                    } else {
-                      debugPrint(
-                          "Đăng ký với email: $email, số điện thoại: $phone, mật khẩu: $password");
-                      if (!mounted) return;
-                      final navigator = Navigator.of(context);
-                      navigator.pop();
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  child: Text(
-                    'ĐĂNG KÝ',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+    if (emailError != null ||
+        phoneError != null ||
+        passwordError != null ||
+        confirmPasswordError != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng kiểm tra lại thông tin')),
+      );
+    } else {
+      try {
+        // Gửi yêu cầu POST đến API
+        final response = await http.post(
+          Uri.parse('http://127.0.0.1:5000/create_account'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'email': email,
+            'phone': phone,
+            'password': password,
+          }),
+        );
+
+        if (response.statusCode == 201) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tạo tài khoản thành công!')),
+          );
+          Navigator.of(context).pop(); // Đóng dialog
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${response.body}')),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi kết nối: $e')),
+        );
+      }
+    }
+  },
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.blue[800],
+    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(25),
+    ),
+  ),
+  child: const Text(
+    'ĐĂNG KÝ',
+    style: TextStyle(
+      fontSize: 16,
+      color: Colors.white,
+    ),
+  ),
+),
                 SizedBox(height: 20),
                 Text(
                   'Hoặc đăng ký bằng',
