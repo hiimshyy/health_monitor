@@ -204,7 +204,7 @@ Future<bool> _checkFirstLogin(int userId) async {
   try {
     // Gửi yêu cầu GET đến API
     final response = await http.get(
-      Uri.parse('http://127.0.0.1:5000/check_fullname?user_id=$userId'),
+      Uri.parse('https://api-chatbot-beta.vercel.app/check_fullname?user_id=$userId'),
     );
 
     // Kiểm tra trạng thái phản hồi
@@ -305,7 +305,7 @@ Future<bool> _checkFirstLogin(int userId) async {
     try {
       // Gửi yêu cầu POST đến API
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:5000/login'),
+        Uri.parse('https://api-chatbot-beta.vercel.app/login'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'username': emailOrPhone,
@@ -631,7 +631,7 @@ class __SignUpDialogState extends State<_SignUpDialog> {
       try {
         // Gửi yêu cầu POST đến API
         final response = await http.post(
-          Uri.parse('http://127.0.0.1:5000/create_account'),
+          Uri.parse('https://api-chatbot-beta.vercel.app/create_account'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({
             'email': email,

@@ -16,6 +16,7 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
   final _fullNameController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
+  final _medicalHistoryController = TextEditingController(); // Thêm controller mới
 
   String? _selectedGender;
   final List<String> _genders = ['Nam', 'Nữ', 'Khác'];
@@ -39,14 +40,16 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
     _fullNameController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _medicalHistoryController.dispose(); // Dispose controller mới
     super.dispose();
   }
 
-  void _saveProfile() async {
-    String fullName = _fullNameController.text;
-    String? gender = _selectedGender;
-    String height = _heightController.text;
-    String weight = _weightController.text;
+void _saveProfile() async {
+  String fullName = _fullNameController.text;
+  String? gender = _selectedGender;
+  String height = _heightController.text;
+  String weight = _weightController.text;
+  String medicalHistory = _medicalHistoryController.text; // Lấy giá trị từ controller mới
 
     if (fullName.isEmpty ||
         gender == null ||
@@ -67,7 +70,7 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
       try {
         // Gửi yêu cầu POST đến API
         final response = await http.post(
-          Uri.parse('http://127.0.0.1:5000/update_user'),
+          Uri.parse('https://api-chatbot-beta.vercel.app/update_user'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({
             'user_id': widget.userId, // Sử dụng userId được truyền vào
@@ -78,6 +81,7 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
             'year_of_birth': _selectedYear,
             'height': int.tryParse(height),
             'weight': int.tryParse(weight),
+            'medical_history': medicalHistory.isEmpty ? null : medicalHistory, // Thêm field mới
           }),
         );
 
@@ -460,6 +464,37 @@ class UserProfileSetupScreenState extends State<UserProfileSetupScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 20), // Existing spacing
+          // THÊM Ô TIỂU SỬ BỆNH TẬT TẠI ĐÂY
+          TextField(
+            controller: _medicalHistoryController,
+            maxLines: 4,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            decoration: InputDecoration(
+              labelText: 'Tiểu sử bệnh tật (không bắt buộc)',
+              hintText: 'Ví dụ: Tiểu đường, cao huyết áp, dị ứng thuốc...',
+              labelStyle: TextStyle(color: Colors.blue[900]),
+              hintStyle: TextStyle(color: Colors.grey[600]),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: Colors.blue[200]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: Colors.blue[200]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: Colors.blue[800]!),
+              ),
+              prefixIcon: Icon(Icons.medical_information, color: Colors.blue[800]),
+              filled: true,
+              fillColor: Colors.white,
+              alignLabelWithHint: true,
+            ),
+            style: const TextStyle(color: Colors.black87),
+          ),
                       ],
                     ),
                   ),

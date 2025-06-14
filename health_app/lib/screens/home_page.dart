@@ -8,7 +8,6 @@ import 'chatbot_page.dart';
 import 'notification_page.dart';
 import '../widgets/custom_drawer.dart';
 import '../widgets/chatbot_drawer.dart';
-
 // Thêm class UserProfile để parse dữ liệu từ API
 class UserProfile {
   final String fullname;
@@ -20,6 +19,7 @@ class UserProfile {
   final String gender;
   final double height;
   final double weight;
+  final String medicalHistory; // Thêm dòng này
 
   UserProfile({
     required this.fullname,
@@ -31,6 +31,7 @@ class UserProfile {
     required this.gender,
     required this.height,
     required this.weight,
+    required this.medicalHistory, // Thêm dòng này
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -44,6 +45,7 @@ class UserProfile {
       gender: json['gender'] ?? '',
       height: (json['height'] ?? 0).toDouble(),
       weight: (json['weight'] ?? 0).toDouble(),
+      medicalHistory: json['medical_history'] ?? 'Không có', // Thêm dòng này
     );
   }
 }
@@ -94,6 +96,7 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   String fullName = '';
+  String medicalHistory = "Không có";
   bool isConnected = false;
   late MqttServerClient client;
   List<Map<String, dynamic>> _chatHistory = [];
@@ -126,7 +129,7 @@ class HomePageState extends State<HomePage> {
     try {
       // Gọi API để lấy thông tin profile
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:5000/get_profile?user_id=${widget.userId}')
+        Uri.parse('https://api-chatbot-beta.vercel.app/get_profile?user_id=${widget.userId}')
       );
       
       if (response.statusCode == 200) {
@@ -135,7 +138,7 @@ class HomePageState extends State<HomePage> {
         if (data['message'] == "Profile retrieved successfully") {
           // Parse dữ liệu profile
           final userProfile = UserProfile.fromJson(data['profile']);
-          
+          medicalHistory = userProfile.medicalHistory;
           // Cập nhật fullName trong SharedPreferences
           await prefs.setString('fullName', userProfile.fullname);
           
@@ -190,26 +193,204 @@ class HomePageState extends State<HomePage> {
         'profiles', jsonEncode(_profiles.map((p) => p.toJson()).toList()));
   }
 
-  Future<void> _loadMeasurementHistory() async {
+Future<void> _loadMeasurementHistory() async {
+  try {
+    debugPrint('Loading measurement history from API...');
+    
+    final response = await http.get(
+      Uri.parse('https://api-chatbot-beta.vercel.app/get_vital_sign?user_id=${widget.userId}')
+    );
+    
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      debugPrint('API Response: $data');
+      
+      if (!mounted) return;
+      
+      setState(() {
+        measurementHistory = data.map((item) => {
+          'time': item['time'],
+          'temperature': double.tryParse(item['temp'].toString()) ?? 0.0,
+          'heartRate': item['heartRate'] ?? 0,
+          'spo2': item['spo2'] ?? 0,
+          'sys': item['sys'] ?? 0,
+          'dia': item['dia'] ?? 0,
+        }).toList();
+      });
+      
+      debugPrint('✅ Loaded ${measurementHistory.length} measurement records from API');
+      
+      // Lưu vào SharedPreferences để backup
+      await _saveMeasurementHistory();
+      
+    } else {
+      debugPrint('❌ HTTP Error: ${response.statusCode}');
+      // Fallback: load từ SharedPreferences nếu API lỗi
+      await _loadMeasurementHistoryFromLocal();
+    }
+  } catch (e) {
+    debugPrint('❌ Error loading measurement history from API: $e');
+    // Fallback: load từ SharedPreferences nếu có lỗi
+    await _loadMeasurementHistoryFromLocal();
+  }
+}
+
+// Hàm backup để load từ SharedPreferences
+Future<void> _loadMeasurementHistoryFromLocal() async {
+  try {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? historyJson = prefs.getString('measurementHistory');
+    
     if (!mounted) return;
+    
     if (historyJson != null) {
       setState(() {
-        measurementHistory =
-            List<Map<String, dynamic>>.from(jsonDecode(historyJson));
+        measurementHistory = List<Map<String, dynamic>>.from(jsonDecode(historyJson));
       });
+      debugPrint('📱 Loaded measurement history from local storage');
+    } else {
+      setState(() {
+        measurementHistory = [];
+      });
+      debugPrint('📱 No local measurement history found');
     }
+  } catch (e) {
+    debugPrint('❌ Error loading local measurement history: $e');
+    if (!mounted) return;
+    setState(() {
+      measurementHistory = [];
+    });
   }
+}
 
   Future<void> _saveMeasurementHistory() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('measurementHistory', jsonEncode(measurementHistory));
   }
+  Future<void> _saveVitalSignToAPI(double temp, int heartRate, int spo2, int sys, int dia) async {
+  try {
+    final url = 'https://api-chatbot-beta.vercel.app/save_vital_sign?user_id=${widget.userId}&temp=$temp&heart_rate=$heartRate&spo2=$spo2&sys=$sys&dia=$dia';
+    
+    final response = await http.get(Uri.parse(url));
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success'] == true || data['message'] != null) {
+        debugPrint('Vital sign saved successfully to database');
+      } else {
+        debugPrint('Failed to save vital sign: ${data['message']}');
+      }
+    } else {
+      debugPrint('HTTP Error: ${response.statusCode}');
+    }
+  } catch (e) {
+    debugPrint('Error saving vital sign to API: $e');
+  }
+}
+// ...existing code...
+Future<void> _predictHealthStatus(
+    double temp, int heartRate, int spo2, int sys, int dia, String medicalHistory) async {
+  try {
+    final response = await http.post(
+      Uri.parse('https://api-model-predict.vercel.app/api/chat/completions'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        "messages": [
+          {
+            "role": "user",
+            "content":
+                "temp: $temp heartRate: $heartRate spo2: $spo2 sys: $sys dia: $dia \nTiểu sử bệnh: $medicalHistory"
+          }
+        ],
+      }),
+    );
+    if (response.statusCode == 200) {
+      final jsonData = jsonDecode(response.body);
+      final content = jsonData['choices']?[0]?['message']?['content']?.toString() ?? 'No response';
+      print("temp: $temp heartRate: $heartRate spo2: $spo2 sys: $sys dia: $dia \nTiểu sử bệnh: $medicalHistory");
+      print('Predict result: $content');
 
+      // Kiểm tra kết quả và hiện thông báo nếu cần
+      if (content.trim() != "0") {
+        // Ví dụ: nếu trả về "1 - Huyết áp cao" thì hiện thông báo "Huyết áp cao"
+        String message = content;
+        // Nếu muốn chỉ lấy phần sau dấu "-", bạn có thể tách chuỗi:
+        if (content.contains('-')) {
+          message = content.split('-')[1].trim();
+        }
+        // Hiện thông báo
+if (context.mounted) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext context) {
+      return Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red[700], size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Cảnh báo sức khỏe',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: const TextStyle(fontSize: 18, color: Colors.black87),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[700],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Tôi biết rồi',
+                    style: TextStyle(fontSize: 16, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+      }
+    } else {
+      print('Predict API error: ${response.statusCode} - ${response.reasonPhrase}');
+    }
+  } catch (e) {
+    print('Error calling predict API: $e');
+  }
+}
+// ...existing code...
   Future<void> _connectToMqtt() async {
     client = MqttServerClient(
-        '42cb8a3135f84357959ce239305850c0.s1.eu.hivemq.cloud',
+        '1df19fa858774630a1197a48081cc0c1.s1.eu.hivemq.cloud',
         'flutter_client');
     client.port = 8883;
     client.secure = true;
@@ -223,54 +404,72 @@ class HomePageState extends State<HomePage> {
       debugPrint('Subscribed to health/data');
 
       // Set up message handler
-      client.updates!.listen(
-        (List<MqttReceivedMessage<MqttMessage>> c) {
-          // debugPrint('Got message in listener');
-          final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
-          final String message =
-              MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
-          // debugPrint('Message: $message');
+client.updates!.listen(
+  (List<MqttReceivedMessage<MqttMessage>> c) {
+    debugPrint('Got message in listener');
+    final MqttPublishMessage recMess = c[0].payload as MqttPublishMessage;
+    final String message =
+        MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+    debugPrint('Message: $message');
 
-          try {
-            final data = jsonDecode(message);
-            // debugPrint('Parsed JSON data: $data');
-            if (!mounted) return;
-            setState(() {
-              temperature = (data['temp'] as num).toDouble();
-              spo2 = (data['spo2'] as num).toInt();
-              heartRate = (data['hr'] as num).toInt();
-              sys = (data['sys'] as num).toInt();
-              dia = (data['dia'] as num).toInt();
-              final now = DateTime.now();
-              lastUpdated =
-                  '${now.hour}:${now.minute}:${now.second} ${now.day}/${now.month}/${now.year}';
-            });
+    try {
+      final data = jsonDecode(message);
+      debugPrint('Parsed JSON data: $data');
+      if (!mounted) return;
+      
+      // Extract values
+      final double tempValue = (data['temp'] as num).toDouble();
+      final int spo2Value = (data['spo2'] as num).toInt();
+      final int heartRateValue = (data['hr'] as num).toInt();
+      final int sysValue = (data['sys'] as num).toInt();
+      final int diaValue = (data['dia'] as num).toInt();
+      
+      setState(() {
+        temperature = tempValue;
+        spo2 = spo2Value;
+        heartRate = heartRateValue;
+        sys = sysValue;
+        dia = diaValue;
+        final now = DateTime.now();
+        lastUpdated =
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} ${now.day}/${now.month}/${now.year}';
+      });
 
-            // Add to measurement history
-            measurementHistory.insert(0, {
-              'time': lastUpdated,
-              'temperature': temperature,
-              'heartRate': heartRate,
-              'spo2': spo2,
-              'sys': sys,
-              'dia': dia,
-            });
-            if (measurementHistory.length > 10) {
-              measurementHistory = measurementHistory.sublist(0, 10);
-            }
-            _saveMeasurementHistory();
-          } catch (e) {
-            debugPrint('Error processing message: $e');
-          }
-        },
-        onError: (error) {
-          debugPrint('MQTT listener error: $error');
-        },
-        onDone: () {
-          debugPrint('MQTT listener done');
-        },
-      );
+      print('Temperature: $temperature°C');
+      print('Heart Rate: $heartRate bpm');
+      print('SpO2: $spo2%');
+      print('Blood Pressure: $sys/$dia mmHg');
+      print('Last Updated: $lastUpdated');
 
+      // Save to API
+      _saveVitalSignToAPI(tempValue, heartRateValue, spo2Value, sysValue, diaValue);
+      ChatbotScreenState.triggerVitalSignsEvent(tempValue, heartRateValue, spo2Value, sysValue, diaValue);
+
+      _predictHealthStatus(tempValue, heartRateValue, spo2Value, sysValue, diaValue, medicalHistory);
+      // Add to measurement history
+      measurementHistory.insert(0, {
+        'time': lastUpdated,
+        'temperature': temperature,
+        'heartRate': heartRate,
+        'spo2': spo2,
+        'sys': sys,
+        'dia': dia,
+      });
+      if (measurementHistory.length > 10) {
+        measurementHistory = measurementHistory.sublist(0, 10);
+      }
+      _saveMeasurementHistory();
+    } catch (e) {
+      debugPrint('Error processing message: $e');
+    }
+  },
+  onError: (error) {
+    debugPrint('MQTT listener error: $error');
+  },
+  onDone: () {
+    debugPrint('MQTT listener done');
+  },
+);
       if (!mounted) return;
       setState(() {
         isConnected = true;
@@ -287,7 +486,7 @@ class HomePageState extends State<HomePage> {
 
     try {
       debugPrint('Connecting to MQTT broker...');
-      await client.connect('smarthome', 'Smarthome2023');
+      await client.connect('chechanh2003', '0576289825Asd');
     } catch (e) {
       debugPrint('Failed to connect to MQTT broker: $e');
       client.disconnect();
@@ -642,27 +841,18 @@ class HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
-              leading: Builder(
-                builder: (context) => IconButton(
-                  icon: const Icon(
-                    Icons.history,
-                    color: Colors.black,
-                  ),
-                  onPressed: () {
-                    Scaffold.of(context).openDrawer();
-                  },
-                ),
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back,
+                color: Colors.black,
               ),
-              actions: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.add,
-                    color: Colors.black,
-                  ),
-                  onPressed: _handleNewChat,
-                ),
-                const SizedBox(width: 8),
-              ],
+              onPressed: () {
+                setState(() {
+                  _selectedIndex = 0; // Quay về trang chính (Home)
+                });
+              },
+            ),
+              
             ),
             drawer: ChatbotDrawer(
               fullName: fullName,
@@ -677,6 +867,7 @@ class HomePageState extends State<HomePage> {
             ),
             body: ChatbotScreen(
               onChatHistoryUpdated: _handleChatHistoryUpdated,
+              userId: widget.userId,
             ),
           ),
           Scaffold(

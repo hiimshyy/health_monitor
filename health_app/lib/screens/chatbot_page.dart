@@ -6,11 +6,13 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatbotScreen extends StatefulWidget {
+  final int userId;
   final Function(List<Map<String, dynamic>>)? onChatHistoryUpdated;
 
-  const ChatbotScreen({super.key, this.onChatHistoryUpdated});
+  const ChatbotScreen({super.key, this.onChatHistoryUpdated, required this.userId});
 
   @override
   ChatbotScreenState createState() => ChatbotScreenState();
@@ -20,56 +22,445 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _messageController = TextEditingController();
   final List<ChatMessage> _messages = [];
   List<Map<String, dynamic>> _chatHistory = [];
-  String _currentChatId = '';
   bool _isTyping = false;
   String? _currentAttachmentPath;
   String? _currentAttachmentType;
 
+  // Thêm static instance để có thể gọi từ bên ngoài
+  static ChatbotScreenState? _instance;
+
   @override
   void initState() {
     super.initState();
+    _instance = this;
     _loadChatHistory();
-    _startNewChat();
+    
+    // Test fall event sau khi load chat history
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Delay một chút để đảm bảo UI đã được build xong
+      Future.delayed(const Duration(seconds: 1), () {
+        handleFallEvent();
+      });
+    });
   }
 
   @override
   void dispose() {
+    _instance = null;
     _messageController.dispose();
     super.dispose();
   }
+// Thêm vào class ChatbotScreenState
 
-  Future<void> _loadChatHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getString('chatHistory');
-    if (history != null) {
+// Hàm xử lý sự kiện vital signs - chỉ hiện phản hồi từ bot
+Future<void> handleVitalSignsEvent(double temp, int heartRate, int spo2, int sys, int dia) async {
+  final vitalMessage = "temp: $temp heartRate: $heartRate spo2: $spo2 sys: $sys dia: $dia";
+  print('Handling vital signs event: $vitalMessage');
+  setState(() {
+    // Chỉ thêm placeholder cho bot reply, không thêm tin nhắn user
+    _messages.add(ChatMessage(text: '', isUser: false)); // Placeholder
+    _isTyping = true;
+  });
+
+  final index = _messages.length - 1;
+
+  try {
+    debugPrint('Sending vital signs to API...');
+    debugPrint('Request body: ${jsonEncode({
+      "stream": false,
+      "model": "veronai",
+      "messages": [
+        {
+          "role": "user",
+          "content": vitalMessage
+        }
+      ],
+    })}');
+
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:5050/api/chat/completions'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'HealthApp/1.0',
+      },
+      body: jsonEncode({
+        "stream": false,
+        "model": "veronai",
+        "messages": [
+          {
+            "role": "user",
+            "content": vitalMessage
+          }
+        ],
+      }),
+    ).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        throw Exception('Request timeout after 30 seconds');
+      },
+    );
+
+    debugPrint('Response status: ${response.statusCode}');
+    debugPrint('Response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final jsonData = json.decode(response.body) as Map<String, dynamic>;
+      final content = jsonData['choices']?[0]?['message']?['content'] ?? 'Không thể nhận phản hồi từ chatbot';
+
       setState(() {
-        _chatHistory = List<Map<String, dynamic>>.from(jsonDecode(history));
+        _messages[index] = ChatMessage(text: content, isUser: false);
       });
-      widget.onChatHistoryUpdated?.call(_chatHistory);
+
+      // Lưu với tin nhắn ẩn để backup
+      await _saveChatHistory(vitalMessage, content);
+    } else {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi khi gửi dữ liệu vital signs: ${response.statusCode} - ${response.reasonPhrase}',
+          isUser: false,
+        );
+      });
+    }
+  } on TimeoutException catch (e) {
+    setState(() {
+      _messages[index] = ChatMessage(
+        text: 'Lỗi: Kết nối quá thời gian chờ khi gửi dữ liệu vital signs.',
+        isUser: false,
+      );
+    });
+    debugPrint('Timeout error: $e');
+  } on SocketException catch (e) {
+    setState(() {
+      _messages[index] = ChatMessage(
+        text: 'Lỗi kết nối mạng khi gửi dữ liệu vital signs.',
+        isUser: false,
+      );
+    });
+    debugPrint('Socket error: $e');
+  } catch (e) {
+    setState(() {
+      _messages[index] = ChatMessage(
+        text: 'Lỗi không xác định khi gửi dữ liệu vital signs: $e',
+        isUser: false,
+      );
+    });
+    debugPrint('General error: $e');
+  } finally {
+    setState(() {
+      _isTyping = false;
+    });
+  }
+}
+
+// Static method để gọi từ bất kỳ đâu
+static void triggerVitalSignsEvent(double temp, int heartRate, int spo2, int sys, int dia) {
+  _instance?.handleVitalSignsEvent(temp, heartRate, spo2, sys, dia);
+}
+   // Hàm xử lý sự kiện fall - chỉ hiện phản hồi từ bot
+  Future<void> handleFallEvent() async {
+    const fallMessage = "Mai Đông Thức_Huyết áp cao";
+    
+    setState(() {
+      // Chỉ thêm placeholder cho bot reply, không thêm tin nhắn user
+      _messages.add(ChatMessage(text: '', isUser: false)); // Placeholder
+      _isTyping = true;
+    });
+
+    final index = _messages.length - 1;
+
+    try {
+      debugPrint('Sending fall event to API...');
+      debugPrint('Request body: ${jsonEncode({
+        "stream": false,
+        "model": "veronai",
+        "messages": [
+          {
+            "role": "user",
+            "content": fallMessage
+          }
+        ],
+      })}');
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5050/api/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'HealthApp/1.0',
+        },
+        body: jsonEncode({
+          "stream": false,
+          "model": "veronai",
+          "messages": [
+            {
+              "role": "user",
+              "content": fallMessage
+            }
+          ],
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
+
+      debugPrint('Response status: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body) as Map<String, dynamic>;
+        final content = jsonData['choices']?[0]?['message']?['content'] ?? 'Không thể nhận phản hồi từ chatbot';
+
+        setState(() {
+          _messages[index] = ChatMessage(text: content, isUser: false);
+        });
+
+        // Lưu với tin nhắn ẩn để backup
+        await _saveChatHistory(fallMessage, content);
+      } else {
+        setState(() {
+          _messages[index] = ChatMessage(
+            text: 'Lỗi khi gửi thông báo ngã: ${response.statusCode} - ${response.reasonPhrase}',
+            isUser: false,
+          );
+        });
+      }
+    } on TimeoutException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi: Kết nối quá thời gian chờ khi gửi thông báo ngã.',
+          isUser: false,
+        );
+      });
+      debugPrint('Timeout error: $e');
+    } on SocketException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi kết nối mạng khi gửi thông báo ngã.',
+          isUser: false,
+        );
+      });
+      debugPrint('Socket error: $e');
+    } catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi không xác định khi gửi thông báo ngã: $e',
+          isUser: false,
+        );
+      });
+      debugPrint('General error: $e');
+    } finally {
+      setState(() {
+        _isTyping = false;
+      });
+    }
+  }
+  // Static method để gọi từ bất kỳ đâu
+  static void triggerFallEvent() {
+    _instance?.handleFallEvent();
+  }
+
+  // ...existing code... (giữ nguyên tất cả các hàm khác)
+
+    Future<void> _loadChatHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api-chatbot-beta.vercel.app/history_chat?user_id=${widget.userId}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> history = jsonDecode(response.body);
+        
+        // Chuyển đổi từ API response thành ChatMessage objects
+        final List<ChatMessage> messages = history.map((item) {
+          return ChatMessage(
+            text: item['content'] ?? '',
+            isUser: item['role'] == 'user',
+          );
+        }).toList();
+
+        setState(() {
+          _messages.clear();
+          _messages.addAll(messages);
+        });
+
+        // Cập nhật local storage để backup
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('chatHistory', jsonEncode(history));
+        
+        debugPrint('Loaded ${messages.length} messages from server');
+        
+        // Kiểm tra nếu lịch sử trống thì gửi "xin chào"
+        if (messages.isEmpty) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _sendGreeting();
+          });
+        }
+        
+      } else {
+        debugPrint('Lỗi khi tải lịch sử chat: ${response.statusCode}');
+        // Fallback to local storage nếu server không available
+        await _loadChatHistoryFromLocal();
+      }
+    } catch (e) {
+      debugPrint('Lỗi khi gọi API lịch sử chat: $e');
+      // Fallback to local storage nếu có lỗi network
+      await _loadChatHistoryFromLocal();
     }
   }
 
-  Future<void> _saveChatHistoryLocally() async {
+  Future<void> _loadChatHistoryFromLocal() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('chatHistory', jsonEncode(_chatHistory));
-    widget.onChatHistoryUpdated?.call(_chatHistory);
+    final history = prefs.getString('chatHistory');
+    if (history != null) {
+      final List<dynamic> chatData = jsonDecode(history);
+      
+      final List<ChatMessage> messages = chatData.map((item) {
+        return ChatMessage(
+          text: item['content'] ?? '',
+          isUser: item['role'] == 'user',
+        );
+      }).toList();
+
+      setState(() {
+        _messages.clear();
+        _messages.addAll(messages);
+      });
+      
+      debugPrint('Loaded ${messages.length} messages from local storage');
+      
+      // Kiểm tra nếu lịch sử local cũng trống thì gửi "xin chào"
+      if (messages.isEmpty) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _sendGreeting();
+        });
+      }
+    } else {
+      // Không có lịch sử local nào, gửi "xin chào"
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _sendGreeting();
+      });
+    }
   }
 
+  // Hàm gửi lời chào tương tự như handleFallEvent
+  Future<void> _sendGreeting() async {
+    const greetingMessage = "xin chào";
+    
+    setState(() {
+      // Chỉ thêm placeholder cho bot reply, không thêm tin nhắn user
+      _messages.add(ChatMessage(text: '', isUser: false)); // Placeholder
+      _isTyping = true;
+    });
+
+    final index = _messages.length - 1;
+
+    try {
+      debugPrint('Sending greeting to API...');
+      debugPrint('Request body: ${jsonEncode({
+        "stream": false,
+        "model": "veronai",
+        "messages": [
+          {
+            "role": "user",
+            "content": greetingMessage
+          }
+        ],
+      })}');
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5050/api/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'HealthApp/1.0',
+        },
+        body: jsonEncode({
+          "stream": false,
+          "model": "veronai",
+          "messages": [
+            {
+              "role": "user",
+              "content": greetingMessage
+            }
+          ],
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
+
+      debugPrint('Response status: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body) as Map<String, dynamic>;
+        final content = jsonData['choices']?[0]?['message']?['content'] ?? 'Không thể nhận phản hồi từ chatbot';
+
+        setState(() {
+          _messages[index] = ChatMessage(text: content, isUser: false);
+        });
+
+        // Lưu lời chào để backup
+        await _saveChatHistory(greetingMessage, content);
+      } else {
+        setState(() {
+          _messages[index] = ChatMessage(
+            text: 'Lỗi khi gửi lời chào: ${response.statusCode} - ${response.reasonPhrase}',
+            isUser: false,
+          );
+        });
+      }
+    } on TimeoutException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi: Kết nối quá thời gian chờ khi gửi lời chào.',
+          isUser: false,
+        );
+      });
+      debugPrint('Timeout error: $e');
+    } on SocketException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi kết nối mạng khi gửi lời chào.',
+          isUser: false,
+        );
+      });
+      debugPrint('Socket error: $e');
+    } catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi không xác định khi gửi lời chào: $e',
+          isUser: false,
+        );
+      });
+      debugPrint('General error: $e');
+    } finally {
+      setState(() {
+        _isTyping = false;
+      });
+    }
+  }
+
+  // ...existing code... (giữ nguyên tất cả các hàm khác)
   Future<void> _saveChatHistory(String userMessage, String botReply) async {
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:5000/history_chat'),
+        Uri.parse('https://api-chatbot-beta.vercel.app/history_chat'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'user': userMessage,
           'assistant': botReply,
-          'conversation_id': _currentChatId,
-          'user_id': 1,
+          'user_id': widget.userId,
         }),
       );
 
       if (response.statusCode == 200) {
-        debugPrint('conversation_id: $_currentChatId');
         debugPrint('Lịch sử cuộc trò chuyện đã được lưu.');
       } else {
         debugPrint('Lỗi khi lưu lịch sử: ${response.body}');
@@ -79,48 +470,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  Future<void> _startNewChat() async {
-    try {
-      final response = await http.get(
-        Uri.parse('http://127.0.0.1:5000/id_conversation?&user_id=1'),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> conversationIds = jsonDecode(response.body);
-        final newChatId = (conversationIds.isNotEmpty
-                ? (conversationIds.cast<int>().reduce((a, b) => a > b ? a : b) + 1)
-                : 1)
-            .toString();
-
-        const welcomeMessage =
-            'Xin chào! Tôi là trợ lý sức khỏe của bạn. Tôi có thể giúp gì cho bạn?';
-
-        setState(() {
-          _currentChatId = newChatId;
-          _messages.clear();
-          _messages.add(ChatMessage(text: welcomeMessage, isUser: false));
-        });
-
-        final chatData = {
-          'id': newChatId,
-          'title': 'Cuộc trò chuyện mới',
-          'lastMessage': welcomeMessage,
-          'time': DateTime.now().toString(),
-          'messages': jsonEncode([
-            {'text': welcomeMessage, 'isUser': false}
-          ]),
-        };
-
-        _chatHistory.insert(0, chatData);
-        await _saveChatHistoryLocally();
-      } else {
-        throw Exception('Failed to fetch conversation IDs');
-      }
-    } catch (e) {
-      debugPrint('Error starting new chat: $e');
-    }
-  }
-
+// ...existing code...
   Future<void> _handleSubmitted(String text) async {
     if (text.trim().isEmpty && _currentAttachmentPath == null) return;
 
@@ -132,82 +482,106 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     });
 
     final index = _messages.length - 1;
-    String buffer = '';
 
+    // Chỉ lấy 2 cuộc hội thoại gần nhất (4 tin nhắn: 2 user + 2 assistant)
     final List<Map<String, String>> history = _messages
+        .where((message) => message.text.isNotEmpty) // Filter out empty messages
         .map((message) => {
               "role": message.isUser ? "user" : "assistant",
               "content": message.text,
             })
+        .toList()
+        .reversed // Đảo ngược để lấy từ cuối
+        .take(5) // Lấy tối đa 4 tin nhắn (2 cặp hội thoại)
+        .toList()
+        .reversed // Đảo ngược lại về thứ tự ban đầu
         .toList();
 
     try {
-      final request = http.Request(
-        'POST',
-        Uri.parse('https://chat.hacfe.io.vn/api/chat/completions'),
-      )
-        ..headers.addAll({
-          'Authorization': 'Bearer sk-05e4688dd2794cfc89850827b07530c2',
-          'Content-Type': 'application/json',
-        })
-        ..body = jsonEncode({
-          "stream": true,
-          "model": "veronai2",
-          "messages": history,
-        });
+      debugPrint('Sending request to API...');
+      debugPrint('Request body: ${jsonEncode({
+        "stream": false,
+        "model": "veronai",
+        "messages": history,
+      })}');
 
-      final response = await request.send();
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:5050/api/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'HealthApp/1.0',
+        },
+        body: jsonEncode({
+          "stream": false,
+          "model": "veronai",
+          "messages": history,
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout after 30 seconds');
+        },
+      );
+
+      debugPrint('Response status: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final stream = response.stream.transform(utf8.decoder);
+        final jsonData = json.decode(response.body) as Map<String, dynamic>;
+        final content = jsonData['choices']?[0]?['message']?['content'] ?? 'No response';
 
-        await for (final chunk in stream) {
-          for (final line in const LineSplitter().convert(chunk)) {
-            if (line.trim().isEmpty) continue;
-            if (line.trim() == 'data: [DONE]') break;
+        setState(() {
+          _messages[index] = ChatMessage(text: content, isUser: false);
+        });
 
-            final cleaned = line.replaceFirst(RegExp(r'^data:\s*'), '');
-
-            try {
-              final jsonData = json.decode(cleaned) as Map<String, dynamic>;
-              final delta = jsonData['choices']?[0]?['delta']?['content'];
-
-              if (delta != null && delta.isNotEmpty) {
-                buffer += delta;
-
-                setState(() {
-                  _messages[index] = ChatMessage(text: buffer, isUser: false);
-                });
-              }
-            } catch (e) {
-              debugPrint('Error parsing stream chunk: $e');
-            }
-          }
-        }
-
-        await _saveChatHistory(text, buffer);
+        await _saveChatHistory(text, content);
       } else {
         setState(() {
           _messages[index] = ChatMessage(
-            text: 'Lỗi: Không thể kết nối đến API.',
+            text: 'Lỗi API: ${response.statusCode} - ${response.reasonPhrase}\nResponse: ${response.body}',
             isUser: false,
           );
         });
       }
-    } catch (e) {
+    } on TimeoutException catch (e) {
       setState(() {
         _messages[index] = ChatMessage(
-          text: 'Lỗi: $e',
+          text: 'Lỗi: Kết nối quá thời gian chờ. Vui lòng thử lại.',
           isUser: false,
         );
       });
+      debugPrint('Timeout error: $e');
+    } on SocketException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi kết nối mạng: Không thể kết nối đến server. Kiểm tra kết nối internet.',
+          isUser: false,
+        );
+      });
+      debugPrint('Socket error: $e');
+    } on FormatException catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi định dạng dữ liệu từ server.',
+          isUser: false,
+        );
+      });
+      debugPrint('Format error: $e');
+    } catch (e) {
+      setState(() {
+        _messages[index] = ChatMessage(
+          text: 'Lỗi không xác định: $e',
+          isUser: false,
+        );
+      });
+      debugPrint('General error: $e');
     } finally {
       setState(() {
         _isTyping = false;
       });
     }
-  }
-
+  }// ...existing code...
   Future<void> _pickImage(ImageSource source) async {
     try {
       final picker = ImagePicker();
@@ -420,7 +794,7 @@ class ChatMessage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
@@ -434,26 +808,111 @@ class ChatMessage extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(vertical: 10.0, horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isUser ? Colors.grey[200] : Colors.transparent,
+              // ĐÂY LÀ NƠI CHỈNH MÀU NỀN TIN NHẮN
+              color: isUser 
+                  ? Colors.blue[100]        // Màu nền tin nhắn của user
+                  : Colors.grey[100],       // Màu nền tin nhắn của bot
               borderRadius: BorderRadius.circular(20.0),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (attachmentPath != null) _buildAttachment(),
-                if (text.isNotEmpty)
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      color: Colors.black,
-                    ),
-                  ),
+                if (text.isNotEmpty) _buildTextContent(),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+  
+  Widget _buildTextContent() {
+    // Kiểm tra nếu là tin nhắn từ bot và có chứa markdown
+    if (!isUser && _containsMarkdown(text)) {
+      return MarkdownBody(
+        data: text,
+        styleSheet: MarkdownStyleSheet(
+          p: const TextStyle(
+            color: Colors.black,
+            fontSize: 14,
+          ),
+          strong: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+          em: const TextStyle(
+            fontStyle: FontStyle.italic,
+            color: Colors.black,
+          ),
+          code: TextStyle(
+            backgroundColor: Colors.grey[100],
+            fontFamily: 'monospace',
+            fontSize: 13,
+          ),
+          codeblockDecoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          blockquote: TextStyle(
+            color: Colors.grey[600],
+            fontStyle: FontStyle.italic,
+          ),
+          blockquoteDecoration: BoxDecoration(
+            color: Colors.grey[50],
+            border: Border(
+              left: BorderSide(
+                color: Colors.grey[300]!,
+                width: 4,
+              ),
+            ),
+          ),
+          listBullet: const TextStyle(
+            color: Colors.black,
+          ),
+          h1: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+          h2: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+          h3: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        selectable: true,
+      );
+    } else {
+      // Hiển thị text thường cho tin nhắn user hoặc không có markdown
+      return Text(
+        text,
+        style: const TextStyle(
+          color: Colors.black,
+        ),
+      );
+    }
+  }
+
+  // Kiểm tra xem text có chứa markdown không
+  bool _containsMarkdown(String text) {
+    final markdownPatterns = [
+      RegExp(r'\*\*.*?\*\*'), // Bold
+      RegExp(r'\*.*?\*'),     // Italic
+      RegExp(r'`.*?`'),       // Code
+      RegExp(r'^#{1,6}\s'),   // Headers
+      RegExp(r'^\*\s'),       // List items
+      RegExp(r'^\-\s'),       // List items
+      RegExp(r'^\d+\.\s'),    // Numbered list
+      RegExp(r'^>\s'),        // Blockquote
+    ];
+    
+    return markdownPatterns.any((pattern) => pattern.hasMatch(text));
   }
 
   Widget _buildAttachment() {

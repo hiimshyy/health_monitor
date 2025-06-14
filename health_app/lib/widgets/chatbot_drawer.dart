@@ -37,7 +37,7 @@ class _ChatbotDrawerState extends State<ChatbotDrawer> {
   Future<void> _fetchChatHistory() async {
     try {
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:5000/id_conversation?&user_id=1'),
+        Uri.parse('https://api-chatbot-beta.vercel.app/id_conversation?&user_id=1'),
       );
 
       if (response.statusCode == 200) {
